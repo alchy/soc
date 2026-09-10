@@ -23,6 +23,20 @@ dohledávají. Identitou je ale sha256.
 
 ## Rychlý start
 
+Cílený způsob nasazení je **rootless kontejner** — služba rozbaluje cizí
+malware a mount je tvrdší hranice než `ReadWritePaths` v systemd unitu:
+
+```bash
+sudo deploy/install-container.sh
+sudo -u soc -H XDG_RUNTIME_DIR=/run/user/$(id -u soc) deploy/container-build.sh
+sudo systemctl enable --now soc-api-container
+```
+
+Podrobnosti, včetně dvou míst, kde se síť dá nastavit špatně tak, že to
+vypadá funkčně: [docs/install-container.md](docs/install-container.md).
+
+Nativně (vývoj, jednostrojové nasazení):
+
 ```bash
 pip install -e .
 SOC_VAULT=/var/lib/soc/vault python -m soc_api
@@ -77,6 +91,12 @@ běží, a origin ACL by neznamenal nic.
 
 Hlavičce se přitom věří jen tehdy, když spojení přišlo od vlastní proxy
 (`SOC_TRUSTED_PROXIES`); jinak by si ji klient mohl nastavit sám.
+
+> **V kontejneru není proxy vidět na `127.0.0.1`.** Pasta překládá zdrojovou
+> adresu na adresu hostitele, takže `SOC_TRUSTED_PROXIES` musí obsahovat
+> právě ji — `container-run.sh` ji zjišťuje za běhu. Špatná hodnota nic
+> neohlásí, jen origin ACL přestane rozlišovat klienty; jak to ověřit, je
+> v [docs/install-container.md](docs/install-container.md).
 
 ## Rozbalování
 
@@ -152,9 +172,29 @@ rozbalovací vrstvy (zip-slip, bomby, symlinky, heslované archivy).
 
 ## Nasazení
 
-[`deploy/`](deploy/) obsahuje vzor systemd unitu a nginx vhostu. Poznámky,
-které stojí za přečtení dřív než po prvním incidentu, jsou v komentářích
-těch souborů.
+| soubor | k čemu |
+|---|---|
+| [`deploy/install-container.sh`](deploy/install-container.sh) | připraví hostitele (uživatel, subuid/subgid, linger, unit) |
+| [`deploy/container-build.sh`](deploy/container-build.sh) | postaví obraz |
+| [`deploy/container-run.sh`](deploy/container-run.sh) | parametry běhu; unit ho jen volá |
+| [`deploy/soc-api-container.service`](deploy/soc-api-container.service) | systemd unit (kontejner) |
+| [`deploy/soc-api.service`](deploy/soc-api.service) | systemd unit (nativní běh) |
+| [`deploy/nginx-soc.conf.example`](deploy/nginx-soc.conf.example) | vzor vhostu |
+
+Poznámky, které stojí za přečtení dřív než po prvním incidentu, jsou
+v komentářích těch souborů a v [docs/install-container.md](docs/install-container.md).
+
+### Izolace
+
+V kontejneru nemá proces žádné schopnosti, kořen je jen pro čtení a jediné
+zapisovatelné místo je namontovaný vault:
+
+```
+CapEff: 0000000000000000      žádné schopnosti
+/www                          hostitelský strom uvnitř neexistuje
+/app                          Read-only file system
+/var/lib/soc/vault            jediný zápis (+ /tmp na tmpfs)
+```
 
 ## Licence
 

@@ -14,7 +14,10 @@ chyba ani duplikat v ulozisti, jen dalsi radek v jeho access.log.
 """
 from __future__ import annotations
 
+import json
 import shutil
+import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 from flask import Flask, jsonify, request
@@ -25,20 +28,43 @@ app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = config.MAX_UPLOAD_BYTES + 1024 * 1024
 
 
+# ── provozni log ─────────────────────────────────────────────────────────────
+# Jeden radek, jeden JSON objekt - stejny tvar jako u access-manageru.
+# Bezny provoz na stdout, potize na stderr: odmitnuty pozadavek NENI chyba
+# procesu, sluzba se prave zachovala spravne. Trideni podle proudu pak dela
+# `grep stderr` uzitecnou triaz.
+
+def log(event: str, *, err: bool = False, **fields) -> None:
+    line = json.dumps({"t": datetime.now(UTC).isoformat(timespec="seconds"),
+                       "event": event, **fields}, ensure_ascii=False, sort_keys=True)
+    print(line, file=sys.stderr if err else sys.stdout, flush=True)
+
+
 # ── pomocne ──────────────────────────────────────────────────────────────────
 
-def client_ip() -> str:
-    """Skutecna adresa klienta.
+def resolve_client() -> tuple[str, bool]:
+    """Vraci (adresa klienta, veri se hlavicce?).
 
     Hlavickam se veri jen tehdy, kdyz spojeni prislo od nasi vlastni proxy;
     jinak by si kdokoli mohl origin ACL prepsat sam.
+
+    Pozor pri behu v kontejneru: proxy NENI videt na 127.0.0.1. Pasta preklada
+    zdrojovou adresu na adresu hostitele, takze `SOC_TRUSTED_PROXIES` musi
+    obsahovat prave ji. Kdyz nesedi, vraci se sem adresa proxy a origin ACL
+    v access-manageru prestane rozlisovat klienty - proto to `trusted` nize
+    konci v logu u kazdeho odmitnuti.
     """
     peer = request.remote_addr or ""
-    if peer in config.TRUSTED_PROXIES:
+    trusted = peer in config.TRUSTED_PROXIES
+    if trusted:
         fwd = request.headers.get("X-Real-IP") or request.headers.get("X-Forwarded-For", "")
         if fwd:
-            return fwd.split(",")[0].strip()
-    return peer
+            return fwd.split(",")[0].strip(), True
+    return peer, trusted
+
+
+def client_ip() -> str:
+    return resolve_client()[0]
 
 
 def bearer() -> str | None:
@@ -53,6 +79,13 @@ def caller() -> dict:
 
 @app.errorhandler(auth.AuthError)
 def _auth_error(e: auth.AuthError):
+    # `peer` vs `client_ip` je diagnostika na tu nejzradnejsi chybu nasazeni:
+    # kdyz se `trusted` hlasi false a peer je adresa proxy, jde do
+    # access-manageru jako origin proxy misto klienta a origin ACL
+    # nerozlisuje nic - pritom to zvenku vypada funkcne.
+    ip, trusted = resolve_client()
+    log("auth_denied", err=True, error=e.error, path=request.path,
+        peer=request.remote_addr, client_ip=ip, trusted_proxy=trusted)
     return jsonify({"error": e.error, "detail": e.detail}), e.status
 
 
@@ -236,6 +269,11 @@ def get_analysis(sha256: str):
 
 
 # ── provoz ───────────────────────────────────────────────────────────────────
+
+log("starting", vault=str(config.VAULT), am_url=config.AM_URL,
+    am_realm=config.AM_REALM, trusted_proxies=list(config.TRUSTED_PROXIES),
+    max_upload=config.MAX_UPLOAD_BYTES)
+
 
 @app.get("/api/v1/healthz")
 def healthz():

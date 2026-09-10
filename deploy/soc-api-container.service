@@ -1,0 +1,62 @@
+# soc-api v kontejneru, rootless podman, start pri bootu.
+#
+# Kontejner bezi jako uzivatel `soc` - ne jako root. Aby to slo bez
+# prihlaseni, musi mit uzivatel zapnuty linger a delegovane subuid/subgid;
+# oboji zaridi deploy/install-container.sh.
+#
+# Port se publikuje na 127.0.0.1 - sluzba NENI dostupna zvenci. Pred ni
+# patri reverzni proxy s TLS na hostiteli.
+#
+# Instalace:
+#     sudo deploy/install-container.sh
+#     systemctl enable --now soc-api-container
+
+[Unit]
+Description=soc-api v kontejneru (podman, rootless; prijem malware vzorku :8095)
+Documentation=https://github.com/alchy/soc
+Wants=network-online.target
+After=network-online.target
+
+# Sluzba overuje klice u access-manageru. Bez nej nastartuje, jen bude kazdy
+# pozadavek vracet 502 - proto Wants, ne Requires.
+Wants=access-manager-container.service
+After=access-manager-container.service
+
+# Uzivatelsky manager drzi /run/user/<uid> a sbernici, bez kterych rootless
+# podman nenastartuje. Pri bootu by se to jinak zavodilo - linger ho spusti,
+# ale nikdo negarantuje, ze driv nez tuhle sluzbu.
+Requires=user@978.service
+After=user@978.service
+
+[Service]
+Type=simple
+User=soc
+Group=soc
+
+# Rootless podman bez prihlaseni: potrebuje vedet, kde ma runtime adresar
+# (drzi ho pri zivote linger) a kde ma domov (tam lezi uloziste obrazu).
+Environment=HOME=/www/soc
+Environment=XDG_RUNTIME_DIR=/run/user/978
+# Bez teto sbernice crun neprolozi kontejner do uzivatelskeho systemd
+# a start skonci na `creating systemd unit ... got failed`.
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/978/bus
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+
+# Jediny zdroj pravdy o parametrech behu je container-run.sh; unit ho jen vola,
+# aby se rucni spusteni a provoz nemohly rozejit. Parametry se prebijeji
+# souborem nize (SOC_VAULT_HOST, SOC_PORT, SOC_HOST_ADDR, ...).
+EnvironmentFile=-/etc/sysconfig/soc-api-container
+ExecStart=/usr/local/bin/soc-api-container --foreground
+
+ExecStopPost=-/usr/bin/podman rm -f soc-api
+
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+
+# Rootless podman si sam zaklada cgroupy pro kontejner - bez delegace mu to
+# systemd nedovoli a start skonci na chybe cgroup manageru.
+Delegate=yes
+
+[Install]
+WantedBy=multi-user.target
