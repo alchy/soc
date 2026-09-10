@@ -232,7 +232,8 @@ měřila a nic nevyšla.
 
 ## Testy
 
-59 testů, běží bez sítě i bez access-manageru.
+56 testovacích funkcí (59 běhů — část je parametrizovaná pro
+ZipCrypto i AES), všechny bez sítě a bez access-manageru.
 
 ```
 tests/test_extract.py    obrany rozbalovaci vrstvy

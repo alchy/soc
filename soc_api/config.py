@@ -26,7 +26,6 @@ MAX_EXTRACT_FILES = int(os.environ.get("SOC_MAX_FILES", 10_000))
 # ── access-manager ───────────────────────────────────────────────────────────
 AM_URL = os.environ.get("SOC_AM_URL", "http://127.0.0.1:22000")
 AM_REALM = os.environ.get("SOC_AM_REALM", "soc.autumnpartials.com")
-AM_COMPONENT = os.environ.get("SOC_AM_COMPONENT", "socupload")
 
 # Kratka cache verdiktu o klici. Odvolani klice se projevi az po jejim vyprseni
 # - proto vteriny, ne minuty. Bez cache by kazdy upload znamenal kolo po siti.
