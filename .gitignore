@@ -1,0 +1,15 @@
+# Klice aplikaci - NIKDY do gitu.
+*.key
+*.secret
+.env
+
+# Uloziste vzorku. Do repozitare nepatri uz z principu: jsou to malware
+# vzorky a osobni udaje odesilatelu v access.log.
+vault/
+
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/

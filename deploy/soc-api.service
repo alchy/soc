@@ -1,0 +1,41 @@
+# soc-api - prijem malware vzorku pro soc.example.com
+#
+# Bezi jako uzivatel `soc` (zamceny ucet), waitress na 127.0.0.1:8095.
+# TLS a limit velikosti tela terminuje nginx pred sluzbou - viz
+# /etc/nginx/conf.d/autumnpartials-soc.conf.
+#
+# Overeni volajiciho: aplikacni klic realmu soc.example.com
+# v access-manageru (komponenta `socupload`), overovany pres /v1/whoami.
+
+[Unit]
+Description=soc-api (prijem malware vzorku, :8095)
+After=network-online.target access-manager-container.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=soc
+Group=soc
+WorkingDirectory=/www/soc/api
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/www/soc/api/.venv/bin/python -m soc_api
+
+Restart=on-failure
+RestartSec=5
+
+# Sluzba sahá na cizi, zamerne skodlivy obsah - drzime ji co nejtesneji.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+# Jedine misto, kam smi zapisovat: vault se vzorky.
+ReadWritePaths=/www/soc/vault
+
+[Install]
+WantedBy=multi-user.target

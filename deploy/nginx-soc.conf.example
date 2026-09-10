@@ -1,0 +1,67 @@
+# Vzor vhostu pro soc-api. Nahradte `soc.example.com` svou domenou.
+#
+# Dve veci, ktere tenhle soubor resi a nejsou samozrejme:
+#
+# 1. Vault NENI pod webrootem. Kdyby byl, byl by kazdy prijaty malware vzorek
+#    stazitelny z internetu pres staticky web na teze domene.
+# 2. X-Real-IP se prepisuje VZDY adresou peera. Tahle hlavicka urcuje origin
+#    ACL v access-manageru - kdyby si ji smel nastavit klient, obesel by ho.
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    server_name soc.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/soc.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/soc.example.com/privkey.pem;
+    include             /etc/letsencrypt/options-ssl-nginx.conf;
+
+    root  /www/soc/public_html;     # staticky web; vault lezi JINDE
+    index index.html;
+
+    # Cele API mluvi JSONem - vcetne 413, kterou vraci jeste nginx pri
+    # prekroceni client_max_body_size a aplikace ji nikdy neuvidi.
+    # Musi byt na urovni serveru: uvnitr location se u 413 neuplatni,
+    # protoze telo se utne driv, nez se dojde k jeho error_page.
+    error_page 413 = @too_large;
+
+    location /api/ {
+        # Musi odpovidat SOC_MAX_UPLOAD, jinak jeden z limitu mlcky vyhraje.
+        client_max_body_size 50m;
+
+        proxy_pass http://127.0.0.1:8095;
+
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Velky vzorek po pomale lince se nesmi utnout na vychozich 60 s.
+        proxy_read_timeout    300s;
+        proxy_send_timeout    300s;
+        proxy_connect_timeout   5s;
+    }
+
+    location @too_large {
+        default_type application/json;
+        return 413 '{"error":"too_large","detail":"maximum je 52428800 B","max_bytes":52428800}';
+    }
+
+    location / {
+        try_files $uri $uri/ =404;
+    }
+
+    add_header X-Content-Type-Options    "nosniff"                                      always;
+    add_header X-Frame-Options           "DENY"                                         always;
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+}
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name soc.example.com;
+
+    location /.well-known/acme-challenge/ { root /var/www/letsencrypt; allow all; }
+    location / { return 301 https://$host$request_uri; }
+}
