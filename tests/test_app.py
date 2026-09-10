@@ -136,6 +136,24 @@ def test_urlencoded_telo_neprijde_prazdne(client):
     assert r.get_json()["size"] > 0
 
 
+def test_multipart_vetsi_nez_spool_prah(client):
+    """Regrese: velky multipart konci v TMPDIR, ne v pameti.
+
+    Werkzeug spooluje telo pozadavku nad ~500 kB do docasneho souboru.
+    V kontejneru je /tmp tmpfs o par desitkach MB, takze bez presmerovani
+    TMPDIR do vaultu skonci 50MB vzorek na "No space left on device" -
+    HTTP 500, i kdyz na disku je mista dost.
+    """
+    velky = zip_bajty(obsah="x" * (3 * 1024 * 1024))
+
+    r = client.post("/api/v1/samples", headers=HLAVICKY, data={
+        "file": (io.BytesIO(velky), "velky.zip"), "filename": "velky.zip",
+    }, content_type="multipart/form-data")
+
+    assert r.status_code == 201, r.get_json()
+    assert r.get_json()["size"] == len(velky)
+
+
 # ── jmeno archivu ───────────────────────────────────────────────────────────
 
 def test_chybejici_jmeno_je_400(client):

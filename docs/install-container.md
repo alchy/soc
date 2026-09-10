@@ -219,7 +219,7 @@ stroji legitimně je — na to je `soc` mimo sudoers a se zamčeným heslem.
 | `--cap-drop ALL` | služba nepotřebuje žádnou schopnost |
 | `--security-opt no-new-privileges` | totéž co výše, ale uvnitř |
 | `--read-only` | kořen jen pro čtení; kód nejde přepsat |
-| `--tmpfs /tmp` | další zápis, `noexec,nosuid`, mizí s kontejnerem |
+| `--tmpfs /tmp` | drobnosti, `noexec,nosuid`, mizí s kontejnerem |
 | `--volume …:nosuid,nodev,noexec` | ve vaultu leží malware — nic z něj nesmí být spustitelné ani suid |
 | `--userns keep-id:uid=1000,gid=1000` | soubory ve vaultu zůstanou na hostiteli vlastněné `soc` |
 | `--init` | bez něj Python jako PID 1 zahazuje signály a `stop` trvá 10 s |
@@ -232,6 +232,34 @@ vypnul.
 
 Rozbalené soubory přicházejí o `x` bit už při rozbalování; `noexec` na mountu
 je táž pojistka o úroveň níž, v jádře místo v kódu.
+
+### Velká data patří do mountu, ne do tmpfs
+
+`/tmp` je tmpfs o 64 MB — vejdou se do něj drobnosti, ne vzorky. Všechny tři
+operace, které pracují s celým vzorkem, proto míří do namontovaného vaultu:
+
+| operace | kam |
+|---|---|
+| příjem těla | `storage.receive()` zakládá dočasný soubor přímo ve vaultu |
+| spool multipartu | `TMPDIR=$SOC_VAULT/.tmp`, nastavuje entrypoint |
+| rozbalení | `vault/<sha256>/extracted/` |
+
+Prostřední řádek je past, na kterou jsem naletěl: Werkzeug u multipartu
+spooluje tělo požadavku do `TMPDIR`, a dokud mířil na tmpfs, skončil 45MB
+vzorek na `OSError: [Errno 28] No space left on device` a klient dostal
+**HTTP 500** — přestože na disku bylo 47 GB volných. Syrové tělo se přitom
+streamuje rovnou do vaultu, takže stejně velký vzorek prošel; projevilo se to
+jen u multipartu, tedy právě u cesty, kterou se posílá heslo.
+
+Ověření, že se velký upload tmpfs nedotkne:
+
+```bash
+podman exec soc-api df -h /tmp     # pred i po uploadu ma byt 0%
+```
+
+Entrypoint navíc při startu uklidí `TMPDIR` a nedokončené příjmy
+(`.incoming-*`) — po tvrdém pádu by tam zůstaly rozdělané soubory, které už
+nikdo nedokončí a nikdo neuklidí.
 
 ### Ověření
 

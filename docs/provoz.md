@@ -175,6 +175,24 @@ sudo du -sh ~soc/vault/* | sort -h | tail -10       # co zabira nejvic
 posunout přes `SOC_MIN_FREE` v `/etc/sysconfig/soc-api-container`, ale to
 odkládá problém, neřeší ho.
 
+### „Velký multipart vrací 500, malý projde"
+
+Klasicky `TMPDIR` mířící na tmpfs. Werkzeug tam spooluje tělo multipartu
+a `/tmp` v kontejneru má 64 MB:
+
+```bash
+podman logs soc-api | grep -i "No space left"
+podman exec soc-api sh -c 'tr "\0" "\n" < /proc/2/environ | grep TMPDIR'
+# TMPDIR=/var/lib/soc/vault/.tmp        <- spravne (mount, ne tmpfs)
+```
+
+Pozor: `podman exec` **nedědí** prostředí entrypointu, takže
+`podman exec soc-api printenv TMPDIR` ukáže něco jiného než co má proces
+služby. Ptejte se přes `/proc/<pid>/environ`.
+
+Syrové tělo se streamuje rovnou do vaultu, takže se to projeví **jen
+u multipartu** — tedy u cesty, kterou chodí heslo.
+
 ### „Klient dostává 400 filename_required"
 
 Klient neposílá jméno archivu. Je povinné — určuje formát. Pole `filename`

@@ -22,6 +22,25 @@ export SOC_VAULT="${SOC_VAULT:-/var/lib/soc/vault}"
 export SOC_BIND_HOST="${SOC_BIND_HOST:-0.0.0.0}"
 export SOC_BIND_PORT="${SOC_BIND_PORT:-8095}"
 
+# Kam Python odklada docasne soubory. Werkzeug pri multipartu spooluje telo
+# pozadavku prave sem - a /tmp je tmpfs o par desitkach MB, takze 50MB vzorek
+# ho pretece a pozadavek skonci na "No space left on device" (HTTP 500),
+# i kdyz na disku je mista dost. TMPDIR proto miri do namontovaneho vaultu,
+# kde je misto a kde to skaluje se `SOC_MAX_UPLOAD`.
+#
+# Adresar zacina teckou, takze ho vypis vzorku prehlizi.
+export TMPDIR="${TMPDIR:-$SOC_VAULT/.tmp}"
+mkdir -p "$TMPDIR"
+
+# Po tvrdem padu (OOM, kill -9) tu zustanou rozdelane soubory. Sluzba je uz
+# nikdy nedokonci a nikdo je neuklidi, takze by tise ubiraly misto ve vaultu.
+# Start je jedine misto, kde se da bezpecne rict, ze uz nikomu nepatri.
+find "$TMPDIR" -mindepth 1 -delete 2>/dev/null || true
+
+# Totez pro nedokoncene prijmy - `storage.receive` zaklada docasny soubor
+# primo ve vaultu, aby se dal presunout bez kopirovani pres hranici svazku.
+find "$SOC_VAULT" -maxdepth 1 -name ".incoming-*" -delete 2>/dev/null || true
+
 # Access-manager bezi na hostiteli a publikuje jen na jeho smycce, kam
 # kontejner primo nedosahne. Prekladovou adresu zaridi pasta
 # (--map-host-loopback), viz deploy/container-run.sh.
