@@ -69,6 +69,7 @@ curl -X POST https://soc.example.com/api/v1/samples \
 | `GET /api/v1/healthz` | provoz, bez klíče |
 
 Podrobnosti včetně tvarů odpovědí: [docs/api.md](docs/api.md).
+Píšete-li klienta, začněte u [docs/klient.md](docs/klient.md).
 
 ## Autentizace a origin ACL
 
@@ -195,6 +196,20 @@ CapEff: 0000000000000000      žádné schopnosti
 /app                          Read-only file system
 /var/lib/soc/vault            jediný zápis (+ /tmp na tmpfs)
 ```
+
+## Dokumentace
+
+| dokument | pro koho |
+|---|---|
+| [docs/klient.md](docs/klient.md) | autor klienta — jak napsat uploader |
+| [docs/api.md](docs/api.md) | drátová reference API |
+| [docs/nasazeni.md](docs/nasazeni.md) | provozovatel — celý postup nasazení |
+| [docs/install-container.md](docs/install-container.md) | provoz v kontejneru do hloubky |
+| [docs/provoz.md](docs/provoz.md) | logy, diagnostika, běžné úkony |
+| [docs/kod.md](docs/kod.md) | průvodce kódem |
+| [docs/design.md](docs/design.md) | model hrozeb a návrhová rozhodnutí |
+
+Rozcestník s tím, odkud začít: [docs/README.md](docs/README.md).
 
 ## Licence
 
