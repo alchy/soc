@@ -179,6 +179,7 @@ Vše přes proměnné prostředí, výchozí hodnoty v [`soc_api/config.py`](soc
 | `SOC_AM_REALM` | `soc.autumnpartials.com` | očekávaný realm klíče |
 | `SOC_AM_CACHE_S` | 30 | jak dlouho platí verdikt o klíči |
 | `SOC_TRUSTED_PROXIES` | `127.0.0.1,::1` | komu se věří `X-Real-IP` |
+| `SOC_MIN_FREE` | 2 GB | pod tímhle volným místem příjem vrací `507` |
 | `SOC_LOG_DIR` | — (jen stdout) | kam psát `access.log`; v kontejneru `/var/log/soc` |
 | `SOC_LOG_MAX_BYTES` | 50 MB | velikost před rotací |
 | `SOC_LOG_BACKUPS` | 10 | kolik rotovaných souborů držet |
@@ -194,8 +195,15 @@ pip install -e '.[dev]'
 pytest
 ```
 
-Testy běží bez sítě a bez access-manageru; ověřují hlavně obrany
-rozbalovací vrstvy (zip-slip, bomby, symlinky, heslované archivy).
+Testy běží bez sítě a bez access-manageru — ověření klíče se podstrkuje
+monkeypatchem.
+
+| soubor | co pokrývá |
+|---|---|
+| `test_extract.py` | obrany rozbalovací vrstvy: zip-slip, bomby, symlinky, hesla (ZipCrypto i AES), podvržený formát |
+| `test_storage.py` | obsahové adresování, hashe, access.log, atomický zápis |
+| `test_app.py` | HTTP vrstva: tři podoby požadavku, chybové stavy, duplicita, výpisy, docházející místo |
+| `test_auth.py` | překlad verdiktů access-manageru, cache a její klíčování adresou |
 
 ## Nasazení
 

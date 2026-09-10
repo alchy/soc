@@ -2,16 +2,16 @@
 
 *Kde co leží, kudy teče požadavek a proč je to rozdělené právě takhle.*
 
-Celé to je **944 řádků v pěti modulech**. Malé dost na to, aby se to dalo
+Celé to je **986 řádků v pěti modulech**. Malé dost na to, aby se to dalo
 přečíst celé; tenhle dokument je mapa, ne náhrada čtení.
 
 ```
 soc_api/
-    config.py      59   konfigurace z prostredi, vychozi hodnoty
+    config.py      64   konfigurace z prostredi, vychozi hodnoty
     auth.py        78   overeni volajiciho u access-manageru
-    storage.py    151   vault: hashe, manifest, access.log vzorku
+    storage.py    160   vault: hashe, manifest, access.log vzorku
     extract.py    250   bezpecne rozbaleni ZIPu (i sifrovaneho)
-    app.py        393   HTTP vrstva: endpointy, oba logy
+    app.py        421   HTTP vrstva: endpointy, oba logy
     __main__.py    13   spusteni pod waitress
 ```
 
@@ -232,20 +232,38 @@ měřila a nic nevyšla.
 
 ## Testy
 
-17 testů, běží bez sítě i bez access-manageru.
+59 testů, běží bez sítě i bez access-manageru.
 
 ```
 tests/test_extract.py    obrany rozbalovaci vrstvy
 tests/test_storage.py    obsahove adresovani, hashe, access.log
+tests/test_app.py        HTTP vrstva pres app.test_client()
+tests/test_auth.py       preklad verdiktu access-manageru a cache
 ```
 
 Test je pojmenovaný tím, co tvrdí (`test_zip_slip_nezapise_ven`), ne tím,
 kterou funkci volá. Když přidáváte obranu, přidejte test, který ji **poruší
 při odstranění** — ne test, který jen projde kódem.
 
-Co testy **nepokrývají**: HTTP vrstvu a `auth.py` (chtělo by to běžící
-access-manager nebo jeho atrapu). Když se do nich pustíte, dělejte to přes
-`app.test_client()` a `auth._whoami` podstrčené monkeypatchem.
+HTTP testy podstrkují `auth._whoami` monkeypatchem, takže nepotřebují běžící
+access-manager:
+
+```python
+monkeypatch.setattr(auth, "_whoami", lambda key, ip: kdo if key == KLIC else None)
+auth._cache.clear()          # jinak si test odnese verdikt po predchozim
+```
+
+Dvě věci, které stojí za pozornost při psaní dalších:
+
+- **`auth._cache` se musí čistit** mezi testy, jinak druhý test dostane
+  verdikt prvního.
+- **Realm se bere z `config.AM_REALM`**, ne napevno — jinak test spadne na
+  `wrong_realm`, jakmile se změní výchozí konfigurace. (Přesně to se mi
+  stalo.)
+
+Regresní testy na chyby, které tu už byly, jsou pojmenované tak, aby to bylo
+vidět — `test_urlencoded_telo_neprijde_prazdne` hlídá vyčerpaný Werkzeug
+stream.
 
 ## Kam sáhnout, když přidáváte analyzátor
 

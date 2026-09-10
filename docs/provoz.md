@@ -160,6 +160,26 @@ v kontejneru nevidí žádné volání jako smyčkové.
 Skoro jistě `413` od nginx, kterou aplikace nikdy neuvidí. Chybí `error_page`
 na úrovni serveru — viz [nasazeni.md](nasazeni.md), krok 4.
 
+### „Příjem vrací 507 insufficient_storage"
+
+Na vaultu došlo místo pod `SOC_MIN_FREE` (výchozí 2 GB). Vault roste bez
+retence, takže je to otázka času, ne poruchy.
+
+```bash
+df -h ~soc/vault
+curl -s http://127.0.0.1:8095/api/v1/healthz | jq '.free_bytes, .min_free_bytes'
+sudo du -sh ~soc/vault/* | sort -h | tail -10       # co zabira nejvic
+```
+
+Řešení je smazat staré vzorky (viz níže) nebo zvětšit svazek. Práh se dá
+posunout přes `SOC_MIN_FREE` v `/etc/sysconfig/soc-api-container`, ale to
+odkládá problém, neřeší ho.
+
+### „Klient dostává 400 filename_required"
+
+Klient neposílá jméno archivu. Je povinné — určuje formát. Pole `filename`
+v multipartu či JSONu, nebo hlavička `X-Filename` u syrového těla.
+
 ### „Do vaultu chodí prázdné vzorky"
 
 Klient neposílá `Content-Type: application/octet-stream`. Server pak tělo
@@ -254,7 +274,7 @@ Služba nemá metriky. Co dává smysl hlídat zvenku:
 |---|---|
 | žije | `GET /api/v1/healthz` → `200`, `vault_writable: true` |
 | kontejner je zdravý | `podman ps` → `(healthy)` |
-| místo na disku | vault neroste omezeně a nic ho neuklízí |
+| místo na disku | `/healthz` hlásí `degraded` a `507`, klesne-li volno pod `SOC_MIN_FREE` (2 GB) |
 | tiché ztráty | `grep '"trusted_proxy": false' ~soc/logs/service.log` |
 
 Poslední řádek je levná pojistka proti té chybě, která se jinak neprojeví.

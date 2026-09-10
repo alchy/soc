@@ -211,7 +211,25 @@ def upload():
         stream = request.stream
         filename = request.headers.get("X-Filename")
 
-    filename = filename or "sample.bin"
+    # Jmeno urcuje format, takze bez nej nejde archiv rozbalit. Driv se
+    # dosadilo "sample.bin" a vzorek se ulozil jako `unsupported_format` -
+    # s 201 v odpovedi, takze klient odesel s pocitem, ze je hotovo, a archiv
+    # lezel nerozbaleny. Radsi to rict hned.
+    if not filename or not filename.strip():
+        return jsonify({
+            "error": "filename_required",
+            "detail": "jmeno archivu je povinne - urcuje format. Posilejte pole "
+                      "'filename' (multipart/JSON) nebo hlavicku X-Filename",
+        }), 400
+
+    # Vault roste bez retence, takze je potreba hlidat, aby prijem neskoncil
+    # zaplnenym diskem. Odmitnout cisté je lepsi nez zapsat pulku vzorku.
+    volno = storage.free_bytes()
+    if volno is not None and volno < config.MIN_FREE_BYTES:
+        log("vault_full", err=True, free_bytes=volno, required=config.MIN_FREE_BYTES)
+        return jsonify({"error": "insufficient_storage",
+                        "detail": "na vaultu neni dost mista, prijem docasne odmitnut",
+                        "free_bytes": volno}), 507
 
     tmp, digests, over = storage.receive(stream, config.MAX_UPLOAD_BYTES)
     if over:
@@ -388,6 +406,16 @@ log("starting", vault=str(config.VAULT), am_url=config.AM_URL,
 @app.get("/api/v1/healthz")
 def healthz():
     ok = config.VAULT.is_dir()
-    return jsonify({"status": "ok" if ok else "degraded",
-                    "vault": str(config.VAULT),
-                    "vault_writable": ok}), (200 if ok else 503)
+    volno = storage.free_bytes()
+    dost_mista = volno is None or volno >= config.MIN_FREE_BYTES
+
+    telo = {"status": "ok" if (ok and dost_mista) else "degraded",
+            "vault": str(config.VAULT),
+            "vault_writable": ok,
+            "free_bytes": volno,
+            "min_free_bytes": config.MIN_FREE_BYTES}
+    if not dost_mista:
+        telo["detail"] = "na vaultu dochazi misto - prijem odmita nove vzorky"
+    # 503 jen kdyz uz prijem nefunguje; malo mista je taky 503, protoze
+    # sluzba v tom stavu odmita zapisovat.
+    return jsonify(telo), (200 if (ok and dost_mista) else 503)

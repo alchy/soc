@@ -43,6 +43,11 @@ TRUSTED_PROXIES = tuple(
     p.strip() for p in os.environ.get("SOC_TRUSTED_PROXIES", "127.0.0.1,::1").split(",") if p.strip()
 )
 
+# Kolik mista musi na vaultu zustat volne, aby se prijimaly nove vzorky.
+# Vault roste bez retence, takze bez teto pojistky by se disk jednou zaplnil
+# a sluzba by zacala selhavat az uprostred zapisu.
+MIN_FREE_BYTES = int(os.environ.get("SOC_MIN_FREE", 2 * 1024 * 1024 * 1024))
+
 # ── logy ─────────────────────────────────────────────────────────────────────
 # Adresar pro access.log sluzby. Prazdna hodnota = pise se jen na stdout
 # (a odtud do logu kontejneru). V kontejneru se sem montuje adresar

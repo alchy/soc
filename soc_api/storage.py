@@ -72,6 +72,15 @@ def receive(stream, max_bytes: int) -> tuple[Path, dict, bool]:
     return Path(tmp), digests, over
 
 
+def free_bytes() -> int | None:
+    """Volne misto na vaultu, nebo None kdyz to nejde zjistit."""
+    try:
+        st = os.statvfs(config.VAULT)
+    except OSError:
+        return None
+    return st.f_bavail * st.f_frsize
+
+
 def log_event(sha256: str, event: dict) -> None:
     """Prida radek do access.log vzorku. Jeden radek, jedna udalost."""
     d = sample_dir(sha256)

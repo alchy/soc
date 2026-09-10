@@ -52,7 +52,7 @@ Authorization: Bearer am_k1_…
 Content-Type: multipart/form-data; boundary=…
 
 file=<binarni obsah>       povinne
-filename=sample.zip        jinak se vezme z pole `file`
+filename=sample.zip        povinne (jinak se vezme z pole `file`)
 password=infected          jen kdyz je archiv sifrovany
 ```
 
@@ -80,7 +80,7 @@ Nejjednodušší pro `curl`, ale **bez možnosti poslat heslo**.
 ```http
 POST /api/v1/samples
 Content-Type: application/octet-stream
-X-Filename: sample.zip
+X-Filename: sample.zip              povinne
 X-Expected-SHA256: 9f61e556…        (nepovinne, u vsech tri podob)
 
 <binarni telo>
@@ -92,6 +92,11 @@ X-Expected-SHA256: 9f61e556…        (nepovinne, u vsech tri podob)
 
 `X-Expected-SHA256` je nepovinná kontrola integrity: při neshodě `422`
 a **neuloží se nic**.
+
+> **Jméno archivu je povinné** u všech tří podob — určuje formát. Bez něj
+> vrátí server `400 filename_required`. Dřív se dosadilo `sample.bin`, vzorek
+> se uložil jako `unsupported_format` a klient odešel s `201` a pocitem, že
+> je hotovo.
 
 ### Odpovědi
 
@@ -123,10 +128,12 @@ Location: /api/v1/samples/9f61e556…
 |---|---|---|
 | `201` | — | nový vzorek |
 | `200` | — | tentýž obsah už máme; navíc `"duplicate": true` |
+| `400` | `filename_required` | chybí jméno archivu — bez něj nejde určit formát |
 | `400` | `bad_request` | multipart bez pole `file`, nebo vadný JSON / base64 |
 | `400` | `empty_body` | prázdné tělo |
 | `413` | `too_large` | přes `SOC_MAX_UPLOAD` |
 | `422` | `hash_mismatch` | přenos neodpovídá `X-Expected-SHA256` |
+| `507` | `insufficient_storage` | na vaultu dochází místo, příjem dočasně odmítnut |
 
 Duplicita **není chyba**: originál se nepřepisuje (je to tentýž obsah byte za
 bytem), ale pokus se zapíše do `access.log`.
@@ -244,8 +251,13 @@ nemusí. Přidat pole by je rozbilo, přidat hodnotu ne.
 
 ## `GET /api/v1/healthz`
 
-Bez klíče. `200` když je vault dostupný, jinak `503`.
+Bez klíče. `200` když je vault dostupný a je na něm dost místa, jinak `503`.
 
 ```json
-{ "status": "ok", "vault": "/www/soc/vault", "vault_writable": true }
+{ "status": "ok", "vault": "/var/lib/soc/vault", "vault_writable": true,
+  "free_bytes": 50758963200, "min_free_bytes": 2147483648 }
 ```
+
+Klesne-li volné místo pod `min_free_bytes`, je stav `degraded`, kód `503`
+a příjem začne vracet `507` — vault roste bez retence, takže je lepší
+odmítnout čistě než zapsat půlku vzorku na plný disk.

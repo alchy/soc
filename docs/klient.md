@@ -201,6 +201,7 @@ if r["extraction"]["status"] == "password_required":
 
 | stav | `error` | co s tím |
 |---|---|---|
+| `400` | `filename_required` | zapomněli jste jméno archivu — **neopakovat** bez opravy |
 | `400` | `empty_body` | u syrového těla chybí `Content-Type: application/octet-stream` |
 | `400` | `bad_request` | multipart bez pole `file`, nebo vadný JSON / base64 |
 | `401` | `unauthorized` | chybí nebo neplatí klíč — **neopakovat** |
@@ -209,12 +210,13 @@ if r["extraction"]["status"] == "password_required":
 | `413` | `too_large` | vzorek přes limit; `max_bytes` v těle říká kolik |
 | `422` | `hash_mismatch` | přenos se poškodil — **opakovat** |
 | `502` | `auth_backend_error` | ověřovací služba je dočasně mimo — **opakovat s odstupem** |
+| `507` | `insufficient_storage` | na serveru dochází místo — **opakovat s odstupem**, ozvěte se provozovateli |
 
-Pravidlo: opakovat má smysl u `422`, `502` a síťových chyb. U `401` a `403`
+Pravidlo: opakovat má smysl u `422`, `502`, `507` a síťových chyb. U `401` a `403`
 je opakování zbytečné — nic se samo nespraví a jen to plní auditní stopu.
 
 ```python
-RETRY = {422, 502}
+RETRY = {422, 502, 507}
 
 def send_with_retry(path, pokusu=3):
     for i in range(pokusu):
@@ -322,6 +324,7 @@ plánovaná změna; přidání pole taky. Odebírání ne.
 
 - [ ] klíč je v prostředí nebo secret storu, ne v gitu ani v `ps`
 - [ ] posíláte `.zip` (jiný formát se uloží, ale nerozbalí)
+- [ ] **jméno archivu posíláte vždy** — bez něj je to `400`
 - [ ] heslo dáváte do pole `password`, ne do hlavičky
 - [ ] u syrového těla `Content-Type: application/octet-stream`
 - [ ] timeout aspoň 300 s
