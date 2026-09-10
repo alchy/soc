@@ -2,7 +2,7 @@
 
 *Kde co leží, kudy teče požadavek a proč je to rozdělené právě takhle.*
 
-Celé to je **809 řádků v pěti modulech**. Malé dost na to, aby se to dalo
+Celé to je **944 řádků v pěti modulech**. Malé dost na to, aby se to dalo
 přečíst celé; tenhle dokument je mapa, ne náhrada čtení.
 
 ```
@@ -10,8 +10,8 @@ soc_api/
     config.py      59   konfigurace z prostredi, vychozi hodnoty
     auth.py        78   overeni volajiciho u access-manageru
     storage.py    151   vault: hashe, manifest, access.log vzorku
-    extract.py    166   bezpecne rozbaleni ciziho archivu
-    app.py        342   HTTP vrstva: endpointy, oba logy
+    extract.py    250   bezpecne rozbaleni ZIPu (i sifrovaneho)
+    app.py        393   HTTP vrstva: endpointy, oba logy
     __main__.py    13   spusteni pod waitress
 ```
 
@@ -130,7 +130,38 @@ každá položka je tvrzení útočníka, ne fakt.
 záměr: selhání rozbalení není selhání příjmu a originál je uložený tak jako
 tak.
 
-Čtyři obrany:
+### Formát: dvě kontroly, každá chytí něco jiného
+
+```python
+if not ma_zip_suffix(filename):      # tvrzeni klienta
+    return Result("unsupported_format", …)
+if format_z_obsahu(src) != "zip":    # fakt
+    return Result("format_mismatch", …)
+```
+
+Přijímá se jen ZIP. `format_z_obsahu()` ale rozpoznává i formáty, které
+**nepřijímáme** (rar, 7z, gzip, bzip2, xz, tar) — aby se dalo říct, co klient
+poslal, místo holého „není to zip". Bez toho by odesílatel RARu hádal proč.
+
+### Heslo
+
+Bere se z požadavku, **nikdy se nehádá** a nikam se neloguje.
+
+```python
+with pyzipper.AESZipFile(src) as zf:
+    if password:
+        zf.setpassword(password.encode())
+```
+
+`pyzipper`, ne standardní `zipfile`: šifrovaný ZIP nese buď staré ZipCrypto,
+nebo AES (7-Zip, WinRAR). Stdlib umí jen to první a na AES spadne na
+`NotImplementedError`.
+
+> **`pyzipper.BadZipFile` není podtřída `zipfile.BadZipFile`.** Musí se
+> jmenovat obě, jinak poškozený archiv shodí celý požadavek na 500 místo
+> toho, aby dostal stav `corrupt`. Tahle chyba tam byla; nevracejte ji.
+
+### Čtyři obrany proti obsahu
 
 ```python
 def _safe_target(dest, name):        # cesta mimo cilovy adresar
@@ -150,8 +181,7 @@ Tři **nezávislé** stropy. Bomba obvykle překročí některý z nich dávno p
 tím, než dojde místo na disku; nezávislost znamená, že obejít se musí
 všechny tři, ne jeden.
 
-Symlinky, hardlinky, zařízení a fify se **přeskakují** — u tarů přes
-`member.isfile()`, u zipů přes horní bity `external_attr` (`S_IFLNK`).
+Symlinky se přeskakují podle horních bitů `external_attr` (`S_IFLNK`).
 Přeskočené položky jdou do `Result.skipped`, takže nezmizí potichu.
 
 `_finish()` nakonec odebere `x` bit ze všeho rozbaleného.

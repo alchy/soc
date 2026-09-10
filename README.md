@@ -48,13 +48,24 @@ reverzní proxy před ní — vzor je v [`deploy/`](deploy/).
 ```bash
 curl -X POST https://soc.example.com/api/v1/samples \
      -H "Authorization: Bearer $SOC_KEY" \
-     -H "Content-Type: application/octet-stream" \
-     -H "X-Filename: sample.zip" \
-     --data-binary @sample.zip
+     -F "file=@sample.zip" \
+     -F "filename=sample.zip" \
+     -F "password=infected"        # jen u sifrovaneho archivu
 ```
 
-> `Content-Type: application/octet-stream` uveďte. Bez něj posílá curl
-> `x-www-form-urlencoded` a tělo se interpretuje jako formulář.
+Jde i JSON s base64 nebo syrové tělo — podrobnosti a jejich kompromisy
+v [docs/klient.md](docs/klient.md).
+
+## Dvě fáze
+
+```
+POST /samples                    ->  sha256          synchronni: ulozi a rozbali
+GET  /samples/{sha256}/analysis  ->  state           asynchronni: ptate se vy
+```
+
+Příjem je hotový, když odpoví — `sha256` je trvalá identita vzorku. Analýza
+běží mimo požadavek a server nikam nevolá zpět, takže odesílací a
+vyhodnocovací část klienta můžou být klidně dva různé procesy.
 
 ## Endpointy
 
@@ -99,6 +110,18 @@ Hlavičce se přitom věří jen tehdy, když spojení přišlo od vlastní prox
 > neohlásí, jen origin ACL přestane rozlišovat klienty; jak to ověřit, je
 > v [docs/install-container.md](docs/install-container.md).
 
+## Formát a heslo
+
+Přijímá se **jen ZIP** a musí to potvrdit suffix jména (`.zip`) i magické
+bajty obsahu — suffix je tvrzení klienta, magické bajty fakt. Odmítnuté
+formáty (rar, 7z, gzip, tar, …) se pojmenují, aby klient věděl, co poslal.
+
+Heslo se **posílá v poli `password`**, nikdy se nehádá a nikam se neukládá.
+Funguje staré ZipCrypto i AES (7-Zip, WinRAR).
+
+Archiv, který čekal na heslo, se při opakovaném poslání **s heslem dorozbalí**
+— stav rozbalení je vlastnost vzorku, ne požadavku.
+
 ## Rozbalování
 
 Rozbaluje se **cizí, záměrně škodlivý archiv** — každá položka v něm je
@@ -118,12 +141,12 @@ příjmu; vzorek se uloží a dostane stav:
 | `extraction.status` | význam |
 |---|---|
 | `extracted` | rozbaleno |
-| `cannot_decompress` | nelze rozbalit — důvod v `info` |
-| `not_an_archive` | není zip ani tar; uložen jen originál |
+| `password_required` | šifrovaný archiv, heslo nebylo v požadavku |
+| `bad_password` | heslo nesouhlasí |
+| `unsupported_format` | není to `.zip`; `format` říká, co to je |
+| `format_mismatch` | jméno slibuje zip, obsah je něco jiného |
 | `corrupt` | archiv je poškozený |
-
-Hesla se **nehádají**. Heslovaný archiv skončí jako `cannot_decompress`
-s vysvětlením v `info`.
+| `cannot_decompress` | ostatní — důvod v `info` |
 
 ## Úložiště
 

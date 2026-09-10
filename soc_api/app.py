@@ -14,6 +14,9 @@ chyba ani duplikat v ulozisti, jen dalsi radek v jeho access.log.
 """
 from __future__ import annotations
 
+import base64
+import binascii
+import io
 import json
 import logging
 import shutil
@@ -168,19 +171,47 @@ def upload():
     who = caller()
     ip = client_ip()
 
-    # Prijmeme obe podoby: multipart (formular, nastroje) i syrove telo (curl).
+    # Tri podoby pozadavku. Heslo k archivu jde poslat jen v prvnich dvou -
+    # v hlavicce by koncilo v logach kazde proxy po ceste.
     #
-    # Na `request.files` se sahá JEN u skutecneho multipartu. Werkzeug totiz
-    # parsuje formular lazy - az pri prvnim pristupu k files/form - a tim
+    # Na `request.files`/`request.form` se sahá JEN u skutecneho multipartu.
+    # Werkzeug totiz parsuje formular lazy - az pri prvnim pristupu - a tim
     # vycerpa `request.stream`. U `--data-binary` (curl posila urlencoded)
     # by pak do vaultu doslo prazdne telo.
     ctype = (request.content_type or "").lower()
-    if ctype.startswith("multipart/form-data") and "file" in request.files:
-        fs = request.files["file"]
-        stream, filename = fs.stream, fs.filename
+    password: str | None = None
+
+    if ctype.startswith("multipart/form-data"):
+        fs = request.files.get("file")
+        if fs is None:
+            return jsonify({"error": "bad_request",
+                            "detail": "multipart musi mit pole 'file'"}), 400
+        stream = fs.stream
+        filename = request.form.get("filename") or fs.filename
+        password = request.form.get("password") or None
+
+    elif ctype.startswith("application/json"):
+        # Telo v base64 naroste o tretinu a musi se cele vejit do pameti -
+        # pro velke vzorky je multipart lepsi. Nabizi se pro klienty, kterym
+        # se s multipartem pracuje hur nez s JSONem.
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict) or "data" not in payload:
+            return jsonify({"error": "bad_request",
+                            "detail": "JSON musi byt objekt s poli 'data' (base64) a 'filename'"}), 400
+        try:
+            raw = base64.b64decode(payload["data"], validate=True)
+        except (binascii.Error, ValueError):
+            return jsonify({"error": "bad_request",
+                            "detail": "pole 'data' neni platny base64"}), 400
+        stream = io.BytesIO(raw)
+        filename = payload.get("filename")
+        password = payload.get("password") or None
+
     else:
         stream = request.stream
-        filename = request.headers.get("X-Filename") or "sample.bin"
+        filename = request.headers.get("X-Filename")
+
+    filename = filename or "sample.bin"
 
     tmp, digests, over = storage.receive(stream, config.MAX_UPLOAD_BYTES)
     if over:
@@ -216,9 +247,27 @@ def upload():
         # Pokus se ale zapise: "kdo to poslal znovu" je pro SOC informace.
         tmp.unlink(missing_ok=True)
         storage.log_event(sha256, event)
+        outcome = "duplicate"
+
+        # Jedina vec, kterou opakovany prijem zmenit MUZE: dorozbalit vzorek,
+        # ktery cekal na heslo. Stav rozbaleni je vlastnost vzorku, ne
+        # pozadavku - kdyz prvni pokus prisel bez hesla a druhy s nim, nema
+        # smysl nechat archiv lezet nerozbaleny.
+        cekal_na_heslo = existing.get("extraction", {}).get("status") in (
+            "password_required", "bad_password")
+        if password and cekal_na_heslo:
+            original = d / "original" / existing["filename"]
+            result = extract.extract(original, existing["filename"],
+                                     d / "extracted", password)
+            storage.log_event(sha256, {"event": "extract", "retry": True,
+                                       **result.as_dict()})
+            existing["extraction"] = result.as_dict()
+            existing["state"] = "extracted" if result.status == "extracted" else "received"
+            outcome = "re_extracted" if result.status == "extracted" else "duplicate"
+
         existing["event_count"] = len(storage.read_events(sha256))
         storage.write_manifest(sha256, existing)
-        g.sha256, g.outcome = sha256, "duplicate"
+        g.sha256, g.outcome = sha256, outcome
         return jsonify(existing | {"duplicate": True}), 200
 
     (d / "original").mkdir(parents=True, exist_ok=True)
@@ -228,7 +277,9 @@ def upload():
 
     storage.log_event(sha256, event)
 
-    result = extract.extract(original, d / "extracted")
+    # Heslo se predava dal, ale NIKAM se neuklada ani neloguje - ani do
+    # manifestu, ani do access.log vzorku.
+    result = extract.extract(original, name, d / "extracted", password)
     storage.log_event(sha256, {"event": "extract", **result.as_dict()})
 
     manifest = {

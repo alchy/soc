@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Prijem malware vzorku pro analyzu - REST API nad access-managerem"
 requires-python = ">=3.12"
 license = { text = "Apache-2.0" }
-dependencies = ["flask>=3.0", "waitress>=3.0"]
+dependencies = ["flask>=3.0", "waitress>=3.0", "pyzipper>=0.3"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]

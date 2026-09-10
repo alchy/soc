@@ -24,7 +24,8 @@ analyzátor přibude.
 | archiv zapíše mimo cílový adresář | kontrola výsledné cesty po `resolve()` |
 | dekompresní bomba | tři nezávislé stropy |
 | symlink v archivu ukáže do systému | symlinky/hardlinky/zařízení se přeskakují |
-| vzorek se spustí | odebrání `x` bitu, `noexec` na `/tmp`, `CapEff: 0` |
+| vzorek se spustí | odebrání `x` bitu, `noexec` na mountech, `CapEff: 0` |
+| podvržený formát archivu | rozhoduje suffix **i** magické bajty, ne jedno z nich |
 | únik z procesu do systému | rootless kontejner, read-only kořen, mount jen na vault |
 | únik z kontejneru na hostitele | `NoNewPrivileges` v unitu — `sudo`/`su`/`pkexec` ztrácejí účinek; `soc` není v sudoers |
 | suid binárka jako nástroj útoku | obraz nemá žádnou; mounty jsou `nosuid,nodev,noexec` |
@@ -62,6 +63,15 @@ MD5 a SHA1 se počítají taky, protože v nich se vzorky mezi týmy běžně
 dohledávají (VirusTotal, MISP). Identitou je ale sha256 — MD5 má praktické
 kolize a jako adresa obsahu se nehodí.
 
+### Dorozbalení při opakovaném příjmu
+
+Duplicita normálně nic nemění. Jedinou výjimkou je archiv, který čekal na
+heslo: když druhý pokus heslo přinese, **dorozbalí se**.
+
+Stav rozbalení je vlastnost vzorku, ne požadavku. Nechat archiv ležet
+nerozbalený jen proto, že jsme jeho obsah už jednou viděli, by bylo držení
+se pravidla proti jeho smyslu.
+
 ### Duplicita vrací 200, ne 409
 
 `409 Conflict` by tvrdil, že je něco v nepořádku. Není: poslat tentýž vzorek
@@ -79,13 +89,37 @@ pořád `201`.
 Originál je to hlavní; rozbalení je pohodlí navíc. Kdyby heslovaný archiv
 skončil chybou, klient by ho zkoušel poslat znovu — a dopadlo by to stejně.
 
-### Hesla se nehádají
+### Heslo se posílá, nehádá
 
 Nabízelo se zkoušet konvenční `infected`. Zamítnuto: bylo by to hádání se
 skrytým seznamem, které buď funguje, nebo tiše nefunguje a nikdo neví proč.
 
-Explicitní stav `cannot_decompress` s důvodem v `info` říká pravdu a nechává
-rozhodnutí na tom, kdo vzorek zpracovává dál.
+Heslo je proto **pole požadavku** (`password` v multipartu nebo JSONu).
+Do hlavičky nepatří — skončilo by v logu každé proxy po cestě. U syrového
+těla se tím pádem heslo poslat nedá, a to je záměr, ne opomenutí.
+
+Nikam se neukládá: ani do manifestu, ani do access.logu vzorku, ani do
+provozního logu.
+
+Šifrovaný ZIP nese buď staré ZipCrypto, nebo AES (7-Zip, WinRAR). Standardní
+`zipfile` umí jen to první a na AES spadne, proto `pyzipper` — jediná
+závislost, kterou projekt má nad flask a waitress.
+
+### Jen ZIP
+
+Původně se přijímal i tar. Zúženo na ZIP, protože je to **jediný běžný
+formát, který umí heslo** a zvládneme ho bez externích nástrojů. Dva formáty
+znamenaly dvě cesty kódem, z nichž jedna heslo neuměla a musela to hlásit
+zvláštním stavem.
+
+Formát potvrzuje **suffix jména i magické bajty**. Rozdělení není zbytečné:
+každá kontrola chytí jinou chybu — špatně pojmenovaný archiv (`.tgz`, co je
+opravdu tar) i podvržený obsah (`.zip`, co je RAR). Suffix je tvrzení
+klienta, magické bajty jsou fakt.
+
+Odmítnuté formáty se pojmenovávají (`rar`, `7z`, `gzip`, …), i když je
+nepřijímáme. Kdo pošle RAR, má se dozvědět že poslal RAR, ne že „to není
+zip".
 
 ### Verdikt, ne relace
 
