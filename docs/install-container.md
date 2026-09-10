@@ -15,7 +15,8 @@ a jediné, kam smí zapsat, je namontovaný vault.
 | kód a závislosti | **v obrazu** | — | `/app` |
 | vault se vzorky | **mimo** | `~/vault` | `/var/lib/soc/vault` |
 | konfigurace | proměnné prostředí | `container-run.sh` | — |
-| log služby | **mimo** | `~/logs/service.log` | — (píše ho podman) |
+| access log | **mimo**, mount | `~/logs/access.log` | `/var/log/soc/access.log` |
+| provozní log | **mimo** | `~/logs/service.log` | — (píše ho podman ze stdout) |
 | TLS | **mimo** | reverzní proxy | — |
 
 > **`/var/lib/soc/vault` na hostiteli neexistuje.** Je to přípojný bod uvnitř
@@ -111,7 +112,7 @@ je `trusted_proxy` false, je `SOC_TRUSTED_PROXIES` špatně.
 | `--cap-drop ALL` | služba nepotřebuje žádnou schopnost |
 | `--security-opt no-new-privileges` | žádné zvýšení oprávnění zevnitř |
 | `--read-only` | kořen jen pro čtení; kód nejde přepsat |
-| `--tmpfs /tmp` | jediný další zápis, `noexec,nosuid`, mizí s kontejnerem |
+| `--tmpfs /tmp` | další zápis, `noexec,nosuid`, mizí s kontejnerem |
 | `--userns keep-id:uid=1000,gid=1000` | soubory ve vaultu zůstanou na hostiteli vlastněné `soc` |
 | `--init` | bez něj Python jako PID 1 zahazuje signály a `stop` trvá 10 s |
 

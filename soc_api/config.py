@@ -43,6 +43,17 @@ TRUSTED_PROXIES = tuple(
     p.strip() for p in os.environ.get("SOC_TRUSTED_PROXIES", "127.0.0.1,::1").split(",") if p.strip()
 )
 
+# ── logy ─────────────────────────────────────────────────────────────────────
+# Adresar pro access.log sluzby. Prazdna hodnota = pise se jen na stdout
+# (a odtud do logu kontejneru). V kontejneru se sem montuje adresar
+# z hostitele, takze zaznamy prezijou i smazani kontejneru.
+#
+# Rotace je vlastni (RotatingFileHandler), ne logrotate: v kontejneru zadny
+# logrotate nebezi a na hostiteli by musel umet dat sluzbe vedet.
+LOG_DIR = os.environ.get("SOC_LOG_DIR", "")
+LOG_MAX_BYTES = int(os.environ.get("SOC_LOG_MAX_BYTES", 50 * 1024 * 1024))
+LOG_BACKUPS = int(os.environ.get("SOC_LOG_BACKUPS", 10))
+
 # ── vypisy ───────────────────────────────────────────────────────────────────
 DEFAULT_LIMIT = 20
 MAX_LIMIT = 200

@@ -156,6 +156,9 @@ Vše přes proměnné prostředí, výchozí hodnoty v [`soc_api/config.py`](soc
 | `SOC_AM_REALM` | `soc.autumnpartials.com` | očekávaný realm klíče |
 | `SOC_AM_CACHE_S` | 30 | jak dlouho platí verdikt o klíči |
 | `SOC_TRUSTED_PROXIES` | `127.0.0.1,::1` | komu se věří `X-Real-IP` |
+| `SOC_LOG_DIR` | — (jen stdout) | kam psát `access.log`; v kontejneru `/var/log/soc` |
+| `SOC_LOG_MAX_BYTES` | 50 MB | velikost před rotací |
+| `SOC_LOG_BACKUPS` | 10 | kolik rotovaných souborů držet |
 | `SOC_BIND_HOST` / `SOC_BIND_PORT` | `127.0.0.1` / `8095` | kde poslouchat |
 
 `SOC_MAX_UPLOAD` musí odpovídat `client_max_body_size` na proxy — jinak jeden

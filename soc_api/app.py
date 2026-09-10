@@ -15,17 +15,39 @@ chyba ani duplikat v ulozisti, jen dalsi radek v jeho access.log.
 from __future__ import annotations
 
 import json
+import logging
 import shutil
 import sys
+import time
 from datetime import UTC, datetime
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-from flask import Flask, jsonify, request
+from flask import Flask, g, jsonify, request
 
 from . import auth, config, extract, storage
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = config.MAX_UPLOAD_BYTES + 1024 * 1024
+
+
+# ── access log ───────────────────────────────────────────────────────────────
+# Jeden radek na pozadavek, JSONL - obdoba access logu proxy, ale s tim, co
+# proxy vedet nemuze: kterym klicem se kdo prokazal a jakeho vzorku se to
+# tykalo. Pise se do souboru v namontovanem adresari, takze zaznamy prezijou
+# smazani kontejneru; provozni log (event/auth_denied) zustava na stdout.
+
+_access = logging.getLogger("soc.access")
+_access.propagate = False
+
+if config.LOG_DIR:
+    _dir = Path(config.LOG_DIR)
+    _dir.mkdir(parents=True, exist_ok=True)
+    _h = RotatingFileHandler(_dir / "access.log", maxBytes=config.LOG_MAX_BYTES,
+                             backupCount=config.LOG_BACKUPS, encoding="utf-8")
+    _h.setFormatter(logging.Formatter("%(message)s"))
+    _access.addHandler(_h)
+    _access.setLevel(logging.INFO)
 
 
 # ── provozni log ─────────────────────────────────────────────────────────────
@@ -38,6 +60,37 @@ def log(event: str, *, err: bool = False, **fields) -> None:
     line = json.dumps({"t": datetime.now(UTC).isoformat(timespec="seconds"),
                        "event": event, **fields}, ensure_ascii=False, sort_keys=True)
     print(line, file=sys.stderr if err else sys.stdout, flush=True)
+
+
+@app.before_request
+def _start_timer():
+    g.started = time.monotonic()
+
+
+@app.after_request
+def _access_log(response):
+    """Zapise radek o pozadavku. Bezi i u chyb - error handlery vraci response."""
+    if not _access.handlers:
+        return response
+    ip, trusted = resolve_client()
+    rec = {
+        "t": datetime.now(UTC).isoformat(timespec="seconds"),
+        "method": request.method,
+        "path": request.path,
+        "status": response.status_code,
+        "client_ip": ip,
+        "peer": request.remote_addr,
+        "trusted_proxy": trusted,
+        "bytes_in": request.content_length or 0,
+        "duration_ms": round((time.monotonic() - getattr(g, "started", 0)) * 1000, 1),
+    }
+    # Doplni se jen kdyz je co doplnit - prazdna pole by predstirala, ze se
+    # merila a nic nevysla.
+    for pole in ("component", "key_id", "sha256", "outcome"):
+        if (v := g.get(pole)) is not None:
+            rec[pole] = v
+    _access.info(json.dumps(rec, ensure_ascii=False, sort_keys=True))
+    return response
 
 
 # ── pomocne ──────────────────────────────────────────────────────────────────
@@ -74,7 +127,9 @@ def bearer() -> str | None:
 
 def caller() -> dict:
     """Overi volajiciho, nebo vyhodi AuthError (viz handler nize)."""
-    return auth.authenticate(bearer(), client_ip())
+    who = auth.authenticate(bearer(), client_ip())
+    g.component, g.key_id = who["component"], who["key_id"]
+    return who
 
 
 @app.errorhandler(auth.AuthError)
@@ -143,6 +198,7 @@ def upload():
     expected = (request.headers.get("X-Expected-SHA256") or "").strip().lower()
     if expected and expected != sha256:
         tmp.unlink(missing_ok=True)
+        g.outcome = "hash_mismatch"
         return jsonify({"error": "hash_mismatch", "detail": "prenos neodpovida ocekavanemu hashi",
                         "expected": expected, "actual": sha256}), 422
 
@@ -162,6 +218,7 @@ def upload():
         storage.log_event(sha256, event)
         existing["event_count"] = len(storage.read_events(sha256))
         storage.write_manifest(sha256, existing)
+        g.sha256, g.outcome = sha256, "duplicate"
         return jsonify(existing | {"duplicate": True}), 200
 
     (d / "original").mkdir(parents=True, exist_ok=True)
@@ -188,6 +245,7 @@ def upload():
     }
     storage.write_manifest(sha256, manifest)
 
+    g.sha256, g.outcome = sha256, "stored"
     return jsonify(manifest), 201, {"Location": f"/api/v1/samples/{sha256}"}
 
 
@@ -229,6 +287,7 @@ def get_sample(sha256: str):
 
     storage.log_event(sha256, {"event": "read", "remote_ip": client_ip(),
                                "component": who["component"], "key_id": who["key_id"]})
+    g.sha256 = sha256
     m["events"] = storage.read_events(sha256)
     m["files"] = storage.list_files(sha256)
     return jsonify(m)

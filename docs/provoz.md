@@ -7,18 +7,57 @@
 | | |
 |---|---|
 | služba | `systemctl status soc-api-container` |
-| log služby | `~soc/logs/service.log`, taky `podman logs soc-api` |
+| access log | `~soc/logs/access.log` — píše aplikace, řádek na požadavek |
+| provozní log | `~soc/logs/service.log`, taky `podman logs soc-api` |
 | vault | `~soc/vault/<sha256[:2]>/<sha256>/` |
 | access.log vzorku | v adresáři vzorku |
 | repozitář | `~soc/repo` — odtud se staví obraz |
 | klíč aplikace | u provozovatele, ne na stroji |
 | parametry běhu | `/etc/sysconfig/soc-api-container` |
 
-## Log a triáž
+## Dva logy, každý na něco jiného
 
-Jeden řádek, jeden JSON objekt. **Běžný provoz na `stdout`, potíže na
-`stderr`** — odmítnutý požadavek není chyba procesu, služba se právě
-zachovala správně.
+Oba leží v `~soc/logs/` na **hostiteli**, tedy mimo kontejner — přežijí jeho
+smazání i přestavení obrazu.
+
+| soubor | kdo píše | co v něm je | rotace |
+|---|---|---|---|
+| `access.log` | **aplikace** do mountu `/var/log/soc` | jeden řádek na požadavek | vlastní, 50 MB × 10 |
+| `service.log` | **podman** ze stdout/stderr | provozní události (`starting`, `auth_denied`) | podman, 10 MB |
+
+### `access.log` — jeden řádek na požadavek
+
+Obdoba access logu proxy, ale s tím, co proxy vědět nemůže: **kterým klíčem
+se kdo prokázal** a **jakého vzorku** se to týkalo.
+
+```json
+{"t":"2026-09-10T14:52:17+00:00","method":"POST","path":"/api/v1/samples",
+ "status":201,"outcome":"stored","client_ip":"203.0.113.5",
+ "peer":"192.0.2.10","trusted_proxy":true,"component":"socupload",
+ "key_id":"k1","sha256":"f445ce8a…","bytes_in":134,"duration_ms":13.6}
+```
+
+`outcome` je `stored`, `duplicate` nebo `hash_mismatch`; u dotazů chybí.
+Pole, která nedávají smysl, se **nepíšou** — prázdná hodnota by předstírala,
+že se měřila a nic nevyšlo.
+
+```bash
+# co dneska prislo
+jq -r 'select(.outcome=="stored") | "\(.t) \(.client_ip) \(.sha256[:16])"' ~soc/logs/access.log
+
+# odmitnuti
+jq -r 'select(.status>=400) | "\(.t) \(.status) \(.client_ip) \(.path)"' ~soc/logs/access.log
+
+# nejpomalejsi pozadavky
+jq -s 'sort_by(-.duration_ms) | .[:5] | .[] | "\(.duration_ms) ms \(.path)"' -r ~soc/logs/access.log
+```
+
+Formát je JSONL, takže ho SIEM sebere bez parsování.
+
+### `service.log` — provozní události
+
+**Běžný provoz na `stdout`, potíže na `stderr`** — odmítnutý požadavek není
+chyba procesu, služba se právě zachovala správně.
 
 ```bash
 podman logs soc-api | tail -20
@@ -28,6 +67,10 @@ grep ' stderr F ' ~soc/logs/service.log      # jen to, co chce pozornost
 Na začátku řádku v souboru je razítko a proud, které píše podman; za `F` je
 vlastní záznam služby. Razítko `t` **uvnitř** JSON objektu si píše služba
 a je v UTC.
+
+> `podman logs` čte celý akumulovaný soubor, takže `head -1` ukáže **nejstarší**
+> záznam, ne ten z posledního startu. Na aktuální stav se ptejte přes
+> `grep '"starting"' | tail -1`.
 
 ### Události
 

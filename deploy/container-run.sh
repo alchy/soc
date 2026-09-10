@@ -12,6 +12,9 @@ IMAGE="${SOC_IMAGE:-localhost/soc-api:latest}"
 NAME="${SOC_NAME:-soc-api}"
 DOMOV="${HOME:-/www/soc}"
 VAULT="${SOC_VAULT_HOST:-$DOMOV/vault}"
+# Adresar logu. Montuje se dovnitr jako /var/log/soc, takze si tam sluzba
+# pise vlastni access.log; podman do nej vedle toho pise service.log
+# (stdout/stderr kontejneru). Oboji tedy prezije smazani kontejneru.
 LOGDIR="${SOC_LOG:-$DOMOV/logs}"
 PORT="${SOC_PORT:-8095}"
 BIND="${SOC_BIND:-127.0.0.1}"
@@ -106,7 +109,9 @@ set -- \
     --publish "$BIND:$PORT:8095" \
     --userns "keep-id:uid=1000,gid=1000" \
     --volume "$VAULT:/var/lib/soc/vault:Z" \
+    --volume "$LOGDIR:/var/log/soc:Z" \
     --env "SOC_AM_URL=http://$HOST_ADDR:$AM_PORT" \
+    --env "SOC_LOG_DIR=/var/log/soc" \
     --env "SOC_AM_REALM=$AM_REALM" \
     --env "SOC_TRUSTED_PROXIES=$TRUSTED" \
     --env "SOC_MAX_UPLOAD=$MAX_UPLOAD" \

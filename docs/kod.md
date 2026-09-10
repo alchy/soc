@@ -2,17 +2,17 @@
 
 *Kde co leží, kudy teče požadavek a proč je to rozdělené právě takhle.*
 
-Celé to je **739 řádků v pěti modulech**. Malé dost na to, aby se to dalo
+Celé to je **809 řádků v pěti modulech**. Malé dost na to, aby se to dalo
 přečíst celé; tenhle dokument je mapa, ne náhrada čtení.
 
 ```
 soc_api/
-    config.py     48   konfigurace z prostredi, vychozi hodnoty
-    auth.py       78   overeni volajiciho u access-manageru
-    storage.py   151   vault: hashe, manifest, access.log
-    extract.py   166   bezpecne rozbaleni ciziho archivu
-    app.py       283   HTTP vrstva: endpointy, logovani
-    __main__.py   13   spusteni pod waitress
+    config.py      59   konfigurace z prostredi, vychozi hodnoty
+    auth.py        78   overeni volajiciho u access-manageru
+    storage.py    151   vault: hashe, manifest, access.log vzorku
+    extract.py    166   bezpecne rozbaleni ciziho archivu
+    app.py        342   HTTP vrstva: endpointy, oba logy
+    __main__.py    13   spusteni pod waitress
 ```
 
 ## Dělicí čára, na které to stojí
@@ -185,9 +185,20 @@ a tím vyčerpá `request.stream`. Bez té podmínky by u `curl --data-binary`
 (posílá `x-www-form-urlencoded`) došlo do vaultu prázdné tělo. Tahle chyba
 tam byla a je opravená; nevracejte ji.
 
-**Provozní log** má tvar jednoho JSON objektu na řádek, běžný provoz na
-`stdout`, potíže na `stderr`. Odmítnutý požadavek není chyba procesu —
-služba se právě zachovala správně — takže `grep stderr` funguje jako triáž.
+**Dva logy, každý jinam.** Provozní události (`starting`, `auth_denied`)
+jdou přes `log()` na `stdout`/`stderr` — běžný provoz na stdout, potíže na
+stderr, takže `grep stderr` funguje jako triáž. Odmítnutý požadavek není
+chyba procesu, služba se právě zachovala správně.
+
+Vedle toho `@app.after_request` píše **access log** do souboru
+(`RotatingFileHandler`, adresář z `SOC_LOG_DIR`, v kontejneru namontovaný
+z hostitele). Jeden řádek na požadavek. Rotace je vlastní, ne logrotate —
+v kontejneru žádný neběží a na hostiteli by musel umět dát službě vědět.
+
+Identita a předmět požadavku se do něj dostanou přes `flask.g`: `caller()`
+ukládá `component`/`key_id`, endpointy `sha256`/`outcome`. Pole, která
+nedávají smysl, se **nepíšou** — prázdná hodnota by předstírala, že se
+měřila a nic nevyšla.
 
 ## Testy
 
