@@ -94,7 +94,9 @@ sudo systemctl enable --now soc-api-container
 ```
 
 Obraz stavějte **jako uživatel, pod kterým poběží** — rootless podman drží
-úložiště obrazů v jeho domovském adresáři.
+úložiště obrazů v jeho domovském adresáři, takže obraz postavený rootem by
+`podman run` toho uživatele nenašel. Co je v obrazu, jak ho ověřit a co dělat,
+když build selže: [install-container.md](install-container.md#sestavení-obrazu).
 
 Parametry běhu se přebíjejí v `/etc/sysconfig/soc-api-container`; výčet
 vypíše `soc-api-container --help`.

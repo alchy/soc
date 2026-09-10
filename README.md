@@ -179,7 +179,8 @@ rozbalovací vrstvy (zip-slip, bomby, symlinky, heslované archivy).
 | soubor | k čemu |
 |---|---|
 | [`deploy/install-container.sh`](deploy/install-container.sh) | připraví hostitele (uživatel, subuid/subgid, linger, unit) |
-| [`deploy/container-build.sh`](deploy/container-build.sh) | postaví obraz |
+| [`Dockerfile`](Dockerfile) | definice obrazu |
+| [`deploy/container-build.sh`](deploy/container-build.sh) | postaví obraz — [návod](docs/install-container.md#sestavení-obrazu) |
 | [`deploy/container-run.sh`](deploy/container-run.sh) | parametry běhu; unit ho jen volá |
 | [`deploy/soc-api-container.service`](deploy/soc-api-container.service) | systemd unit (kontejner) |
 | [`deploy/soc-api.service`](deploy/soc-api.service) | systemd unit (nativní běh) |

@@ -23,6 +23,81 @@ a jediné, kam smí zapsat, je namontovaný vault.
 > kontejneru. Kdo do `SOC_VAULT` propašuje hostitelskou cestu, dostane
 > `PermissionError: [Errno 13] Permission denied: '/www'`.
 
+## Sestavení obrazu
+
+Definice je [`Dockerfile`](../Dockerfile) v kořeni repozitáře, staví ho
+[`deploy/container-build.sh`](../deploy/container-build.sh).
+
+```bash
+sudo -u soc -H XDG_RUNTIME_DIR=/run/user/$(id -u soc) \
+     deploy/container-build.sh                    # nebo: [tag], vychozi localhost/soc-api:latest
+```
+
+### Co je v obrazu a co ne
+
+| | |
+|---|---|
+| **v obrazu** | `python:3.12-slim`, závislosti (flask, waitress), balík `soc_api`, entrypoint |
+| **mimo obraz** | vault, logy (mount z hostitele), konfigurace (proměnné prostředí) |
+
+Výsledek má ~148 MB. `.dockerignore` drží mimo build kontext `tests/`,
+`docs/`, `.git`, `.venv` a `vault/` — do obrazu tedy nemůže omylem propadnout
+jediný vzorek.
+
+Obraz **nemá žádnou suid binárku**; `Dockerfile` je po instalaci závislostí
+odstraňuje (`find / -perm /6000 -exec chmod -s`).
+
+### Dvě věci, které se dělají snadno špatně
+
+**Stavějte jako uživatel, pod kterým kontejner poběží.** Rootless podman drží
+úložiště obrazů v jeho domovském adresáři:
+
+```
+/www/soc/.local/share/containers/storage
+```
+
+Obraz postavený rootem skončí úplně jinde a `podman run` toho uživatele ho
+vůbec nenajde — chyba pak zní „image not known", i když jste ho právě
+postavili.
+
+**`--format docker` není kosmetika.** V nativním OCI formátu podman instrukci
+`HEALTHCHECK` zahodí a kontejner nemá jak říct, že je nezdravý. Skript ho
+předává vždy; kdo staví ručně, ať na něj nezapomene.
+
+### Ověření hotového obrazu
+
+```bash
+podman images localhost/soc-api
+podman inspect localhost/soc-api:latest --format '{{.HealthCheck.Test}}'
+# [CMD-SHELL python -c "import urllib.request; ...healthz..."]  <- prazdne = build bez --format docker
+
+podman run --rm localhost/soc-api:latest python -c "import soc_api; print('ok')"
+podman run --rm localhost/soc-api:latest find / -xdev -perm /6000 -type f    # prazdne
+```
+
+Kontejner jde spustit i na osahání, bez systemd a bez access-manageru —
+`/healthz` odpoví `200`, ověřované cesty budou vracet `502`, protože nebude
+na koho se ptát:
+
+```bash
+# jiny port nez 8095, aby to nekolidovalo s bezici sluzbou
+podman run --rm -p 127.0.0.1:8096:8096 \
+       -e SOC_BIND_HOST=0.0.0.0 -e SOC_BIND_PORT=8096 \
+       localhost/soc-api:latest
+
+curl -s http://127.0.0.1:8096/api/v1/healthz
+# {"status":"ok","vault":"/var/lib/soc/vault","vault_writable":true}
+```
+
+### Když build selže
+
+| hláška | příčina |
+|---|---|
+| `HEALTHCHECK is not supported for OCI image format` | chybí `--format docker` |
+| `image not known` při `podman run` | obraz postaven jiným uživatelem (typicky rootem) |
+| `no such file or directory` u `COPY soc_api` | build spuštěn odjinud než z kořene repa |
+| build stahuje base image donekonečna | rootless podman bez `XDG_RUNTIME_DIR` — chybí přístup k úložišti |
+
 ## Instalace
 
 ```bash
