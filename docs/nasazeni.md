@@ -193,15 +193,36 @@ nerozlišuje nikoho — přitom to zvenku vypadá funkčně.
 
 ## 6. Zpevnění, které stojí za kontrolu
 
+Zpevňuje se ve dvou vrstvách; podrobně v
+[install-container.md](install-container.md), tady je kontrolní seznam.
+
+**Hostitel** — kdyby se někdo dostal z kontejneru ven, stojí tam jako `soc`:
+
 ```bash
-podman exec soc-api grep CapEff /proc/self/status   # 0000000000000000
-podman exec soc-api ls /www                          # neexistuje
-podman exec soc-api touch /app/x                     # Read-only file system
+systemctl show soc-api-container -p NoNewPrivileges -p RestrictSUIDSGID
+# NoNewPrivileges=yes
+# RestrictSUIDSGID=yes
+sudo -l -U soc          # User soc is not allowed to run sudo
 ```
 
-Vault je jediné zapisovatelné místo (plus `/tmp` na tmpfs). To je hlavní
-důvod, proč služba běží v kontejneru — rozbaluje cizí malware a mount je
-tvrdší hranice než `ReadWritePaths` v systemd unitu.
+`NoNewPrivileges` nechá suid binárky spustitelné, ale připraví je o účinek —
+`sudo` skončí na *„The 'no new privileges' flag is set"*. Platí to pro procesy
+spuštěné tímhle unitem; shell získaný přes `sudo -iu soc` potomkem unitu není.
+
+**Kontejner**:
+
+```bash
+podman exec soc-api grep CapEff /proc/self/status              # 0000000000000000
+podman exec soc-api find / -xdev -perm /6000 -type f           # prazdne
+podman exec soc-api ls /www                                     # neexistuje
+podman exec soc-api touch /app/x                                # Read-only file system
+podman exec soc-api grep /var/lib/soc/vault /proc/self/mounts   # nosuid,nodev,noexec
+```
+
+Zapisovatelná místa jsou právě tři: vault, `/var/log/soc` (obojí mount
+z hostitele) a `/tmp` na tmpfs — a všechna tři s `nosuid,nodev,noexec`. To je
+hlavní důvod, proč služba běží v kontejneru: rozbaluje cizí malware a mount
+je tvrdší hranice než `ReadWritePaths` v systemd unitu.
 
 ## Aktualizace
 

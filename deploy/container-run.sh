@@ -108,8 +108,8 @@ set -- \
     --network "pasta:--map-host-loopback,$HOST_ADDR" \
     --publish "$BIND:$PORT:8095" \
     --userns "keep-id:uid=1000,gid=1000" \
-    --volume "$VAULT:/var/lib/soc/vault:Z" \
-    --volume "$LOGDIR:/var/log/soc:Z" \
+    --volume "$VAULT:/var/lib/soc/vault:Z,nosuid,nodev,noexec" \
+    --volume "$LOGDIR:/var/log/soc:Z,nosuid,nodev,noexec" \
     --env "SOC_AM_URL=http://$HOST_ADDR:$AM_PORT" \
     --env "SOC_LOG_DIR=/var/log/soc" \
     --env "SOC_AM_REALM=$AM_REALM" \
@@ -121,9 +121,12 @@ set -- \
     --stop-timeout 15
 
 # Sluzba rozbaluje cizi malware. Vsechno, co k tomu nepotrebuje, jde pryc:
-# zadne schopnosti, zadne zvyseni opravneni, koren jen pro cteni. Jedine
-# zapisovatelne misto je namontovany vault - a /tmp, ktery Python obcas chce
-# a ktery je tmpfs, takze po restartu kontejneru nic nezbyde.
+# zadne schopnosti, zadne zvyseni opravneni, koren jen pro cteni.
+#
+# `nosuid,nodev,noexec` na obou mountech: ve vaultu lezi cizi malware a
+# nic z nej se nesmi dat spustit ani pouzit ke zvyseni opravneni. Rozbalene
+# soubory sice prichazeji o `x` bit uz pri rozbalovani, ale to je pojistka
+# v kodu - tohle je pojistka v jadre.
 set -- "$@" \
     --cap-drop ALL \
     --security-opt no-new-privileges \

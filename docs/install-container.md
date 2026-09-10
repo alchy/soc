@@ -105,23 +105,80 @@ je `trusted_proxy` false, je `SOC_TRUSTED_PROXIES` špatně.
 
 ## Zpevnění
 
-`container-run.sh` spouští kontejner takto:
+Zpevňuje se ve **dvou vrstvách**, protože chrání proti dvěma různým věcem.
+
+### Vrstva 1: hostitel (systemd unit)
+
+Kdyby někdo prolomil službu a dostal se z kontejneru ven, stojí na hostiteli
+jako uživatel `soc`. Tomu má zabránit ve zvýšení oprávnění unit:
+
+| direktiva | co dělá |
+|---|---|
+| `NoNewPrivileges=yes` | žádný proces služby ani jeho potomek už nikdy nezvýší oprávnění |
+| `RestrictSUIDSGID=yes` | služba nemůže vyrobit suid/sgid soubor |
+| `User=soc`, `Group=soc` | běží pod zamčeným systémovým účtem, který není v sudoers |
+
+`NoNewPrivileges` nechá suid binárky na hostiteli (`sudo`, `su`, `pkexec`,
+`mount`) spustitelné, ale **připraví je o účinek**:
+
+```
+sudo: The "no new privileges" flag is set, which prevents sudo from running as root.
+```
+
+> **U rootless podmanu to není samozřejmé.** `newuidmap`/`newgidmap`
+> potřebují `cap_setuid`, kterou `NoNewPrivileges` blokuje také. Podman si je
+> spouští mimo tenhle unit, takže mapování UID funguje dál — ověřeno,
+> kontejner naběhne healthy. Kdyby to na jiném stroji nebo s jinou verzí
+> podmanu selhalo, projeví se to při startu chybou mapování UID, ne až za
+> provozu.
+
+**Hranice téhle ochrany:** platí pro procesy, které spustil **tenhle unit**.
+Shell získaný jinak (`sudo -iu soc`, ssh) potomkem unitu není a `NoNewPrivs`
+nedostane. Chrání to tedy před únikem **ze služby**, ne před někým, kdo už na
+stroji legitimně je — na to je `soc` mimo sudoers a se zamčeným heslem.
+
+### Vrstva 2: kontejner (podman)
 
 | přepínač | proč |
 |---|---|
 | `--cap-drop ALL` | služba nepotřebuje žádnou schopnost |
-| `--security-opt no-new-privileges` | žádné zvýšení oprávnění zevnitř |
+| `--security-opt no-new-privileges` | totéž co výše, ale uvnitř |
 | `--read-only` | kořen jen pro čtení; kód nejde přepsat |
 | `--tmpfs /tmp` | další zápis, `noexec,nosuid`, mizí s kontejnerem |
+| `--volume …:nosuid,nodev,noexec` | ve vaultu leží malware — nic z něj nesmí být spustitelné ani suid |
 | `--userns keep-id:uid=1000,gid=1000` | soubory ve vaultu zůstanou na hostiteli vlastněné `soc` |
 | `--init` | bez něj Python jako PID 1 zahazuje signály a `stop` trvá 10 s |
 
-Ověření:
+Obraz navíc **nemá jedinou suid binárku** — `Dockerfile` je odstraňuje
+(`find / -perm /6000 -exec chmod -s`). Base image jich nese jedenáct včetně
+`/usr/bin/su`. `no-new-privileges` je sice zvednout nenechá, ale tohle je
+druhá vrstva pro případ, že by první někdo při úpravě `container-run.sh`
+vypnul.
+
+Rozbalené soubory přicházejí o `x` bit už při rozbalování; `noexec` na mountu
+je táž pojistka o úroveň níž, v jádře místo v kódu.
+
+### Ověření
 
 ```bash
-podman exec soc-api grep CapEff /proc/self/status   # 0000000000000000
-podman exec soc-api ls /www                          # neexistuje
-podman exec soc-api touch /app/x                     # Read-only file system
+# hostitel
+systemctl show soc-api-container -p NoNewPrivileges -p RestrictSUIDSGID
+grep NoNewPrivs /proc/$(systemctl show soc-api-container -p MainPID --value)/status   # 1
+
+# kontejner
+podman exec soc-api grep CapEff /proc/self/status              # 0000000000000000
+podman exec soc-api find / -xdev -perm /6000 -type f           # prazdne
+podman exec soc-api ls /www                                     # neexistuje
+podman exec soc-api touch /app/x                                # Read-only file system
+podman exec soc-api grep /var/lib/soc/vault /proc/self/mounts   # nosuid,nodev,noexec
+```
+
+Že `NoNewPrivileges` opravdu účinkuje, se dá zkusit i přímo:
+
+```bash
+systemd-run --uid=$(id -u soc) --property=NoNewPrivileges=yes --wait --pipe --quiet \
+    /bin/sh -c 'sudo -n true'
+# sudo: The "no new privileges" flag is set, ...
 ```
 
 ## Události

@@ -190,15 +190,26 @@ v komentářích těch souborů a v [docs/install-container.md](docs/install-con
 
 ### Izolace
 
-V kontejneru nemá proces žádné schopnosti, kořen je jen pro čtení a jediné
-zapisovatelné místo je namontovaný vault:
+Zpevňuje se ve dvou vrstvách — uvnitř kontejneru a na hostiteli, kde by
+stál útočník po úniku z něj.
 
 ```
-CapEff: 0000000000000000      žádné schopnosti
-/www                          hostitelský strom uvnitř neexistuje
+# uvnitr kontejneru
+CapEff: 0000000000000000      zadne schopnosti
+/www                          hostitelsky strom uvnitr neexistuje
 /app                          Read-only file system
-/var/lib/soc/vault            jediný zápis (+ /tmp na tmpfs)
+find / -perm /6000            zadna suid binarka
+vault, /var/log/soc, /tmp     jedine zapisy, vsechny nosuid,nodev,noexec
+
+# na hostiteli (systemd unit)
+NoNewPrivileges=yes           sudo/su/pkexec ztraceji ucinek
+RestrictSUIDSGID=yes          sluzba nevyrobi suid soubor
+User=soc                      zamceny ucet mimo sudoers
 ```
+
+`NoNewPrivileges` chrání před únikem **ze služby**; shell získaný jinak
+(`sudo -iu soc`, ssh) potomkem unitu není. Podrobně v
+[docs/install-container.md](docs/install-container.md).
 
 ## Dokumentace
 

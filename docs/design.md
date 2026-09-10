@@ -26,6 +26,8 @@ analyzátor přibude.
 | symlink v archivu ukáže do systému | symlinky/hardlinky/zařízení se přeskakují |
 | vzorek se spustí | odebrání `x` bitu, `noexec` na `/tmp`, `CapEff: 0` |
 | únik z procesu do systému | rootless kontejner, read-only kořen, mount jen na vault |
+| únik z kontejneru na hostitele | `NoNewPrivileges` v unitu — `sudo`/`su`/`pkexec` ztrácejí účinek; `soc` není v sudoers |
+| suid binárka jako nástroj útoku | obraz nemá žádnou; mounty jsou `nosuid,nodev,noexec` |
 | vzorek se stáhne z internetu | vault leží mimo webroot |
 | useknutý přenos projde jako platný | nepovinné `X-Expected-SHA256` |
 
@@ -39,6 +41,10 @@ analyzátor přibude.
   výchozí 30 s). Kompromis mezi kolem po síti u každého požadavku a rychlostí
   odvolání.
 - **Zaplnění disku.** Retence není žádná a kvóta se nehlídá.
+- **Někdo, kdo už na stroji legitimně je.** `NoNewPrivileges` platí pro
+  procesy spuštěné unitem; shell získaný přes `sudo -iu soc` nebo ssh
+  potomkem unitu není. Chrání to před únikem *ze služby*, ne před operátorem
+  ani před kompromitovaným účtem s vlastním přístupem.
 
 ## Rozhodnutí
 
@@ -111,6 +117,16 @@ místo aby byl jen zakázaný.
 K tomu `--cap-drop ALL`, `--read-only`, `--tmpfs /tmp` s `noexec` a rootless
 podman — proces, který by z kontejneru utekl, je venku uid `300000+`, které
 nikomu nepatří.
+
+### Zpevnění ve dvou vrstvách, ne v jedné
+
+Kontejnerové přepínače chrání *uvnitř*. Kdyby je někdo prolomil, stojí na
+hostiteli jako `soc` — a tam začíná druhá vrstva: `NoNewPrivileges=yes`
+v systemd unitu, které suid binárkám (`sudo`, `su`, `pkexec`) sebere účinek,
+plus účet mimo sudoers se zamčeným heslem.
+
+Obě vrstvy dělají v podstatě totéž na dvou různých místech, a to je záměr:
+každá z nich se dá jednou úpravou omylem vypnout, obě naráz spíš ne.
 
 ### Konfigurace prostředím, ne souborem
 

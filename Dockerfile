@@ -18,6 +18,15 @@ COPY pyproject.toml README.md LICENSE ./
 COPY soc_api ./soc_api
 RUN pip install --no-cache-dir .
 
+# Obrazu setrit netreba: nic z toho sluzba nepotrebuje a kazda z nich je
+# nastroj navic pro toho, kdo by uvnitr dostal shell. `--security-opt
+# no-new-privileges` je uz zvednout nenecha, ale tohle je druha vrstva -
+# kdyby prvni nekdo pri uprave container-run.sh vypnul.
+#
+#   /usr/bin/su, mount, umount, passwd, newgrp, chsh, chfn, gpasswd,
+#   chage, expiry, /usr/sbin/unix_chkpwd
+RUN find / -xdev -perm /6000 -type f -exec chmod -s {} + 2>/dev/null || true
+
 COPY deploy/entrypoint.sh /usr/local/bin/entrypoint.sh
 
 # Vault zalozit uz tady a rovnou uzivateli sluzby: anonymni svazek podle

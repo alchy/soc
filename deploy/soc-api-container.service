@@ -54,6 +54,27 @@ Restart=on-failure
 RestartSec=5
 TimeoutStopSec=30
 
+# Zadny proces teto sluzby - ani ten, kdo by se dostal ven z kontejneru -
+# uz nikdy nezvysi opravneni. Suid binarky na hostiteli (sudo, su, pkexec,
+# mount) zustanou spustitelne, ale prestanou mit ucinek:
+#
+#     sudo: The "no new privileges" flag is set, which prevents sudo
+#           from running as root.
+#
+# U rootless podmanu to neni samozrejme: newuidmap/newgidmap potrebuji
+# cap_setuid, kterou NoNewPrivileges taky blokuje. Podman si je spousti mimo
+# tenhle unit, takze mapovani UID funguje dal - overeno, kontejner nabehne.
+#
+# POZOR na hranici teto ochrany: plati pro procesy, ktere spustil TENHLE
+# UNIT. Shell ziskany jinak (`sudo -iu soc`, ssh) potomkem unitu neni
+# a NoNewPrivs nedostane. Chrani to tedy pred unikem ZE SLUZBY, ne pred
+# nekym, kdo uz na stroji legitimne je.
+NoNewPrivileges=yes
+
+# Sluzba nema proc vyrabet suid/sgid soubory. Vault je navic montovany
+# s `nosuid`, takze by stejne nebyly ucinne - tohle je vrstva o uroven vys.
+RestrictSUIDSGID=yes
+
 # Rootless podman si sam zaklada cgroupy pro kontejner - bez delegace mu to
 # systemd nedovoli a start skonci na chybe cgroup manageru.
 Delegate=yes
