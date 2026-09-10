@@ -2,12 +2,12 @@
 
 *Kde co leží, kudy teče požadavek a proč je to rozdělené právě takhle.*
 
-Celé to je **986 řádků v pěti modulech**. Malé dost na to, aby se to dalo
+Celé to je **985 řádků v pěti modulech**. Malé dost na to, aby se to dalo
 přečíst celé; tenhle dokument je mapa, ne náhrada čtení.
 
 ```
 soc_api/
-    config.py      64   konfigurace z prostredi, vychozi hodnoty
+    config.py      63   konfigurace z prostredi, vychozi hodnoty
     auth.py        78   overeni volajiciho u access-manageru
     storage.py    160   vault: hashe, manifest, access.log vzorku
     extract.py    250   bezpecne rozbaleni ZIPu (i sifrovaneho)
@@ -232,7 +232,7 @@ měřila a nic nevyšla.
 
 ## Testy
 
-56 testovacích funkcí (59 běhů — část je parametrizovaná pro
+57 testovacích funkcí (60 běhů — část je parametrizovaná pro
 ZipCrypto i AES), všechny bez sítě a bez access-manageru.
 
 ```
@@ -264,7 +264,21 @@ Dvě věci, které stojí za pozornost při psaní dalších:
 
 Regresní testy na chyby, které tu už byly, jsou pojmenované tak, aby to bylo
 vidět — `test_urlencoded_telo_neprijde_prazdne` hlídá vyčerpaný Werkzeug
-stream.
+stream, `test_multipart_vetsi_nez_spool_prah` přetečený tmpfs.
+
+## Kontrola dokumentace
+
+Čísla a výčty v dokumentaci se rozejdou s kódem dřív, než si toho někdo
+všimne. Proto:
+
+```bash
+python3 tools/check-docs.py
+```
+
+Ověří, že v docs nechybí žádný endpoint, chybový kód, stav rozbalení ani
+proměnná prostředí, že sedí počty řádků a testů a že nikam nevede mrtvý
+odkaz. Vrací nenulový kód, takže se dá pověsit do CI. Pusťte ho po každé
+změně, která přidává endpoint, stav nebo parametr.
 
 ## Kam sáhnout, když přidáváte analyzátor
 

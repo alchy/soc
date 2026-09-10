@@ -205,6 +205,9 @@ monkeypatchem.
 | `test_app.py` | HTTP vrstva: tři podoby požadavku, chybové stavy, duplicita, výpisy, docházející místo |
 | `test_auth.py` | překlad verdiktů access-manageru, cache a její klíčování adresou |
 
+Že dokumentace odpovídá kódu, hlídá `python3 tools/check-docs.py` —
+endpointy, chybové kódy, stavy, proměnné prostředí, počty i odkazy.
+
 ## Nasazení
 
 | soubor | k čemu |
