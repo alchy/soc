@@ -52,7 +52,7 @@ Authorization: Bearer am_k1_…
 Content-Type: multipart/form-data; boundary=…
 
 file=<binarni obsah>       povinne
-filename=sample.zip        povinne (jinak se vezme z pole `file`)
+filename=sample.zip        nepovinne - kdyz chybi, vezme se jmeno z casti `file`
 password=infected          jen kdyz je archiv sifrovany
 ```
 
