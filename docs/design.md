@@ -27,7 +27,7 @@ analyzátor přibude.
 | vzorek se spustí | odebrání `x` bitu, `noexec` na mountech, `CapEff: 0` |
 | podvržený formát archivu | rozhoduje suffix **i** magické bajty, ne jedno z nich |
 | únik z procesu do systému | rootless kontejner, read-only kořen, mount jen na vault |
-| únik z kontejneru na hostitele | `NoNewPrivileges` v unitu — `sudo`/`su`/`pkexec` ztrácejí účinek; `soc` není v sudoers |
+| únik z kontejneru na hostitele | `soc` je zamčený účet mimo sudoers, `RestrictSUIDSGID`, mounty `nosuid,nodev,noexec` |
 | suid binárka jako nástroj útoku | obraz nemá žádnou; mounty jsou `nosuid,nodev,noexec` |
 | vzorek se stáhne z internetu | vault leží mimo webroot |
 | useknutý přenos projde jako platný | nepovinné `X-Expected-SHA256` |
@@ -42,10 +42,15 @@ analyzátor přibude.
   výchozí 30 s). Kompromis mezi kolem po síti u každého požadavku a rychlostí
   odvolání.
 - **Zaplnění disku.** Retence není žádná a kvóta se nehlídá.
-- **Někdo, kdo už na stroji legitimně je.** `NoNewPrivileges` platí pro
+- **Někdo, kdo už na stroji legitimně je.** Zpevnění v unitu platí pro
   procesy spuštěné unitem; shell získaný přes `sudo -iu soc` nebo ssh
   potomkem unitu není. Chrání to před únikem *ze služby*, ne před operátorem
   ani před kompromitovaným účtem s vlastním přístupem.
+- **Zvýšení oprávnění na hostiteli přes `NoNewPrivileges`.** V kontejnerovém
+  unitu ho mít nejde — ruší file capability na `newuidmap`, bez které rootless
+  podman nenastartuje. Procesy sahající na malware ho dostávají uvnitř
+  kontejneru; na hostiteli zbývá účet mimo sudoers a `RestrictSUIDSGID`.
+  Rozbor v [install-container.md](install-container.md).
 
 ## Rozhodnutí
 
@@ -155,9 +160,13 @@ nikomu nepatří.
 ### Zpevnění ve dvou vrstvách, ne v jedné
 
 Kontejnerové přepínače chrání *uvnitř*. Kdyby je někdo prolomil, stojí na
-hostiteli jako `soc` — a tam začíná druhá vrstva: `NoNewPrivileges=yes`
-v systemd unitu, které suid binárkám (`sudo`, `su`, `pkexec`) sebere účinek,
-plus účet mimo sudoers se zamčeným heslem.
+hostiteli jako `soc` — a tam začíná druhá vrstva: účet mimo sudoers se
+zamčeným heslem, `RestrictSUIDSGID=yes` a mounty `nosuid,nodev,noexec`.
+
+Původně tu bylo i `NoNewPrivileges=yes`, jenže to rootless podman nepřežije
+(ruší file capability na `newuidmap`) — a selhalo to tiše až po rebootu.
+Je to dobrá ukázka toho, jak vrstva navíc umí shodit službu, kterou měla
+chránit; ověřovat se proto musí start **bez** existujícího pause procesu.
 
 Obě vrstvy dělají v podstatě totéž na dvou různých místech, a to je záměr:
 každá z nich se dá jednou úpravou omylem vypnout, obě naráz spíš ne.

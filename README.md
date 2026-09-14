@@ -237,14 +237,19 @@ find / -perm /6000            zadna suid binarka
 vault, /var/log/soc, /tmp     jedine zapisy, vsechny nosuid,nodev,noexec
 
 # na hostiteli (systemd unit)
-NoNewPrivileges=yes           sudo/su/pkexec ztraceji ucinek
 RestrictSUIDSGID=yes          sluzba nevyrobi suid soubor
 User=soc                      zamceny ucet mimo sudoers
 ```
 
-`NoNewPrivileges` chrání před únikem **ze služby**; shell získaný jinak
-(`sudo -iu soc`, ssh) potomkem unitu není. Podrobně v
-[docs/install-container.md](docs/install-container.md).
+Zpevnění na hostiteli chrání před únikem **ze služby**; shell získaný jinak
+(`sudo -iu soc`, ssh) potomkem unitu není.
+
+> **`NoNewPrivileges=yes` v kontejnerovém unitu být nesmí.** Zruší file
+> capability na `newuidmap`, bez které si rootless podman nezaloží user
+> namespace — služba pak po rebootu nenaběhne vůbec. Zdá se, že funguje,
+> dokud po ručním spuštění žije pause proces. Procesy, které sahají na
+> malware, `no-new-privileges` dostávají uvnitř kontejneru.
+> Podrobně v [docs/install-container.md](docs/install-container.md).
 
 ## Dokumentace
 

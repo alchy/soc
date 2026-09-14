@@ -54,22 +54,37 @@ Restart=on-failure
 RestartSec=5
 TimeoutStopSec=30
 
-# Zadny proces teto sluzby - ani ten, kdo by se dostal ven z kontejneru -
-# uz nikdy nezvysi opravneni. Suid binarky na hostiteli (sudo, su, pkexec,
-# mount) zustanou spustitelne, ale prestanou mit ucinek:
+# NoNewPrivileges=yes tady BYT NESMI - a stalo to 56 000 restartu, nez se na
+# to prislo. Rootless podman zaklada user namespace pres /usr/bin/newuidmap,
+# ktery na to potrebuje file capability cap_setuid=ep. Prave tu NoNewPrivs
+# rusi, takze start skonci na:
 #
-#     sudo: The "no new privileges" flag is set, which prevents sudo
-#           from running as root.
+#     newuidmap: write to uid_map failed: Operation not permitted
+#     Error: cannot set up namespace using "/usr/bin/newuidmap"
 #
-# U rootless podmanu to neni samozrejme: newuidmap/newgidmap potrebuji
-# cap_setuid, kterou NoNewPrivileges taky blokuje. Podman si je spousti mimo
-# tenhle unit, takze mapovani UID funguje dal - overeno, kontejner nabehne.
+# Driv tu ten radek byl, s komentarem "overeno, kontejner nabehne". To overeni
+# bylo falesne pozitivni: podman vola newuidmap JEN kdyz musi zalozit novy
+# namespace. Kdyz uz bezi pause proces (catatonit -P) z drivejsiho rucniho
+# spusteni, pripoji se k jeho namespace a newuidmap nepotrebuje. Pri rucnim
+# startu podle README tedy sluzba nabehne; po rebootu, kdy zadny pause proces
+# neexistuje, uz nenabehne nikdy a unit se restartuje donekonecna.
 #
-# POZOR na hranici teto ochrany: plati pro procesy, ktere spustil TENHLE
-# UNIT. Shell ziskany jinak (`sudo -iu soc`, ssh) potomkem unitu neni
-# a NoNewPrivs nedostane. Chrani to tedy pred unikem ZE SLUZBY, ne pred
-# nekym, kdo uz na stroji legitimne je.
-NoNewPrivileges=yes
+# Ten mechanismus jde overit primo, bez podmanu:
+#
+#     sudo -u soc bash -c 'unshare -U sleep 10 & sleep .5; \
+#         newuidmap $! 0 978 1 1 300000 65536'                    # MAP OK
+#     sudo -u soc setpriv --no-new-privs bash -c '...totez...'     # EPERM
+#
+# Co se tim ztratilo a proc to nevadi: procesy, ktere sahaji na malware, bezi
+# UVNITR kontejneru a no-new-privileges dostavaji z container-run.sh
+# (--security-opt no-new-privileges) spolu s --cap-drop ALL. Unit-level flag
+# kryl navic uz jen podmanovu supervizni vrstvu na hostiteli - tedy prave to,
+# co newuidmap potrebuje. Zbyva RestrictSUIDSGID nize, ucet mimo sudoers se
+# zamcenym heslem a nosuid,nodev,noexec na vsech mountech.
+#
+# Kdyby na unit-level NoNewPrivs nekdo trval, musel by se rootless podman
+# nahradit necim, co newuidmap nepotrebuje - staticka mapa v /etc/subuid
+# nestaci, zapis do uid_map provadi stejne on.
 
 # Sluzba nema proc vyrabet suid/sgid soubory. Vault je navic montovany
 # s `nosuid`, takze by stejne nebyly ucinne - tohle je vrstva o uroven vys.

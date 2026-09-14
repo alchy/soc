@@ -189,28 +189,51 @@ jako uživatel `soc`. Tomu má zabránit ve zvýšení oprávnění unit:
 
 | direktiva | co dělá |
 |---|---|
-| `NoNewPrivileges=yes` | žádný proces služby ani jeho potomek už nikdy nezvýší oprávnění |
 | `RestrictSUIDSGID=yes` | služba nemůže vyrobit suid/sgid soubor |
 | `User=soc`, `Group=soc` | běží pod zamčeným systémovým účtem, který není v sudoers |
 
-`NoNewPrivileges` nechá suid binárky na hostiteli (`sudo`, `su`, `pkexec`,
-`mount`) spustitelné, ale **připraví je o účinek**:
+> ### `NoNewPrivileges` tu být nemůže — a je to důležité vědět
+>
+> Nabízí se sem přidat `NoNewPrivileges=yes`. **S rootless podmanem to
+> službu rozbije.** Podman zakládá user namespace přes `/usr/bin/newuidmap`,
+> který k tomu potřebuje file capability `cap_setuid=ep` — a právě tu
+> `NoNewPrivs` ruší:
+>
+> ```
+> newuidmap: write to uid_map failed: Operation not permitted
+> Error: cannot set up namespace using "/usr/bin/newuidmap"
+> ```
+>
+> **Proč to vypadá, že to funguje.** Podman volá `newuidmap` jen když musí
+> založit *nový* namespace. Pokud už běží pause proces (`catatonit -P`) —
+> typicky po ručním `podman build`/`run` z quick startu — připojí se
+> k existujícímu a `newuidmap` nepotřebuje. Ruční ověření tedy projde.
+> Po rebootu žádný pause proces neexistuje, unit nenaběhne **nikdy** a
+> restartuje se donekonečna. Tenhle unit takhle jednou strávil 56 000
+> restartů, než si toho někdo všiml.
+>
+> Mechanismus se dá ověřit přímo, bez podmanu:
+>
+> ```bash
+> sudo -u soc bash -c 'unshare -U sleep 10 & sleep .5;
+>     newuidmap $! 0 978 1 1 300000 65536'                   # MAP OK
+> sudo -u soc setpriv --no-new-privs bash -c '...totéž...'    # EPERM
+> ```
+>
+> **Co se tím ztrácí:** nic, co by chránilo malware-facing procesy. Ty běží
+> *uvnitř* kontejneru a `no-new-privileges` dostávají z `container-run.sh`
+> (viz vrstva 2) spolu s `--cap-drop ALL`. Unit-level flag navíc kryl už jen
+> podmanovu supervizní vrstvu na hostiteli — tedy právě to, co `newuidmap`
+> potřebuje.
 
-```
-sudo: The "no new privileges" flag is set, which prevents sudo from running as root.
-```
+Zbývá tedy `RestrictSUIDSGID`, účet `soc` mimo sudoers se zamčeným heslem
+a `nosuid,nodev,noexec` na všech mountech. **Hranice téhle vrstvy:** platí pro
+procesy, které spustil **tenhle unit**. Shell získaný jinak (`sudo -iu soc`,
+ssh) jeho potomkem není. Chrání to před únikem **ze služby**, ne před někým,
+kdo už na stroji legitimně je.
 
-> **U rootless podmanu to není samozřejmé.** `newuidmap`/`newgidmap`
-> potřebují `cap_setuid`, kterou `NoNewPrivileges` blokuje také. Podman si je
-> spouští mimo tenhle unit, takže mapování UID funguje dál — ověřeno,
-> kontejner naběhne healthy. Kdyby to na jiném stroji nebo s jinou verzí
-> podmanu selhalo, projeví se to při startu chybou mapování UID, ne až za
-> provozu.
-
-**Hranice téhle ochrany:** platí pro procesy, které spustil **tenhle unit**.
-Shell získaný jinak (`sudo -iu soc`, ssh) potomkem unitu není a `NoNewPrivs`
-nedostane. Chrání to tedy před únikem **ze služby**, ne před někým, kdo už na
-stroji legitimně je — na to je `soc` mimo sudoers a se zamčeným heslem.
+Nativní unit (`deploy/soc-api.service`) `NoNewPrivileges=yes` **má** — tam
+žádný podman není a nic to nerozbíjí.
 
 ### Vrstva 2: kontejner (podman)
 
@@ -265,8 +288,14 @@ nikdo nedokončí a nikdo neuklidí.
 
 ```bash
 # hostitel
-systemctl show soc-api-container -p NoNewPrivileges -p RestrictSUIDSGID
-grep NoNewPrivs /proc/$(systemctl show soc-api-container -p MainPID --value)/status   # 1
+systemctl show soc-api-container -p RestrictSUIDSGID          # yes
+systemctl show soc-api-container -p NoNewPrivileges           # MUSI byt no, viz vyse
+sudo -l -U soc                                                # not allowed to run sudo
+
+# ze sluzba prezije reboot, tedy start bez existujiciho pause procesu:
+systemctl stop soc-api-container
+pkill -u soc catatonit
+systemctl start soc-api-container && systemctl is-active soc-api-container
 
 # kontejner
 podman exec soc-api grep CapEff /proc/self/status              # 0000000000000000
@@ -276,12 +305,10 @@ podman exec soc-api touch /app/x                                # Read-only file
 podman exec soc-api grep /var/lib/soc/vault /proc/self/mounts   # nosuid,nodev,noexec
 ```
 
-Že `NoNewPrivileges` opravdu účinkuje, se dá zkusit i přímo:
+Že `no-new-privileges` účinkuje **uvnitř** kontejneru, kde na malware sahá:
 
 ```bash
-systemd-run --uid=$(id -u soc) --property=NoNewPrivileges=yes --wait --pipe --quiet \
-    /bin/sh -c 'sudo -n true'
-# sudo: The "no new privileges" flag is set, ...
+podman exec soc-api grep NoNewPrivs /proc/self/status          # 1
 ```
 
 ## Události

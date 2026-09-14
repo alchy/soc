@@ -202,14 +202,21 @@ Zpevňuje se ve dvou vrstvách; podrobně v
 
 ```bash
 systemctl show soc-api-container -p NoNewPrivileges -p RestrictSUIDSGID
-# NoNewPrivileges=yes
+# NoNewPrivileges=no     <- musi byt no, jinak sluzba po rebootu nenabehne
 # RestrictSUIDSGID=yes
 sudo -l -U soc          # User soc is not allowed to run sudo
 ```
 
-`NoNewPrivileges` nechá suid binárky spustitelné, ale připraví je o účinek —
-`sudo` skončí na *„The 'no new privileges' flag is set"*. Platí to pro procesy
-spuštěné tímhle unitem; shell získaný přes `sudo -iu soc` potomkem unitu není.
+> `NoNewPrivileges=yes` v **kontejnerovém** unitu ruší file capability na
+> `newuidmap`, bez které rootless podman nezaloží user namespace. Vypadá to
+> funkčně, dokud žije pause proces z ručního spuštění; po rebootu se unit
+> restartuje donekonečna. Rozbor v
+> [install-container.md](install-container.md). Nativní unit
+> (`deploy/soc-api.service`) ho naopak má — tam žádný podman není.
+
+Zpevnění platí pro procesy spuštěné tímhle unitem; shell získaný přes
+`sudo -iu soc` potomkem unitu není. Procesy, které sahají na malware, dostávají
+`no-new-privileges` uvnitř kontejneru z `container-run.sh`.
 
 **Kontejner**:
 
