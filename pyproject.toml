@@ -13,5 +13,13 @@ dev = ["pytest>=8.0"]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
+# Bez tohohle vyctu skonci `pip install -e .` chybou "Multiple top-level
+# packages discovered in a flat-layout: ['deploy', 'soc_api']". Setuptools
+# si `tests`, `docs` a `tools` vyradi samo, `deploy` uz ne - a protoze
+# Dockerfile kopiruje jen pyproject.toml a soc_api, kontejner se postavi
+# i tak. Rozbita je proto jen ta nativni a vyvojarska cesta z README.
+[tool.setuptools]
+packages = ["soc_api"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
