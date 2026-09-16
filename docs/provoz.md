@@ -111,7 +111,7 @@ podman logs soc-api | grep auth_denied | tail -1
 
 Druhý řádek tabulky je ta tichá porucha: origin ACL přestane rozlišovat
 klienty a **nic to neohlásí**. Adresu, kterou má `SOC_TRUSTED_PROXIES`
-obsahovat, zjišťuje `container-run.sh` za běhu — když se nezjistila,
+obsahovat, zjišťuje `container-run-soc-api.sh` za běhu — když se nezjistila,
 podívejte se na startovní řádek logu.
 
 Druhá strana téhož je audit access-manageru:
@@ -278,7 +278,7 @@ o audit, zvažte přesun místo smazání.
 
 ```bash
 git -C ~soc/repo pull
-sudo -u soc -H XDG_RUNTIME_DIR=/run/user/$(id -u soc) ~soc/repo/deploy/container-build.sh
+sudo -u soc -H XDG_RUNTIME_DIR=/run/user/$(id -u soc) ~soc/repo/deploy/container-build-soc-api.sh
 sudo systemctl restart soc-api-container
 ```
 

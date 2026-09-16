@@ -43,7 +43,7 @@ find "$SOC_VAULT" -maxdepth 1 -name ".incoming-*" -delete 2>/dev/null || true
 
 # Access-manager bezi na hostiteli a publikuje jen na jeho smycce, kam
 # kontejner primo nedosahne. Prekladovou adresu zaridi pasta
-# (--map-host-loopback), viz deploy/container-run.sh.
+# (--map-host-loopback), viz deploy/container-run-soc-api.sh.
 export SOC_AM_URL="${SOC_AM_URL:-http://169.254.1.2:22000}"
 
 # Komu se veri X-Real-IP. Tahle hlavicka urcuje origin ACL v access-manageru,

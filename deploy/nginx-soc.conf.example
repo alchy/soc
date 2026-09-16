@@ -4,8 +4,10 @@
 #
 # 1. Vault NENI pod webrootem. Kdyby byl, byl by kazdy prijaty malware vzorek
 #    stazitelny z internetu pres staticky web na teze domene.
-# 2. X-Real-IP se prepisuje VZDY adresou peera. Tahle hlavicka urcuje origin
-#    ACL v access-manageru - kdyby si ji smel nastavit klient, obesel by ho.
+# 2. Hlavicky s IP klienta (X-Real-IP i X-Forwarded-For) se prepisuji VZDY
+#    adresou peera ($remote_addr). Urcuji origin ACL v access-manageru - kdyby
+#    si je smel nastavit klient, obesel by ho. $proxy_add_x_forwarded_for je
+#    proto ZAKAZANY (pripojil by i cast od klienta). Viz CONTAINER-RULEZ PXY-3.
 
 server {
     listen 443 ssl;
@@ -34,7 +36,7 @@ server {
         proxy_http_version 1.1;
         proxy_set_header Host              $host;
         proxy_set_header X-Real-IP         $remote_addr;
-        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-For   $remote_addr;   # PXY-3: NE $proxy_add_x_forwarded_for
         proxy_set_header X-Forwarded-Proto $scheme;
 
         # Velky vzorek po pomale lince se nesmi utnout na vychozich 60 s.

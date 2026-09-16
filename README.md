@@ -27,8 +27,8 @@ Cílený způsob nasazení je **rootless kontejner** — služba rozbaluje cizí
 malware a mount je tvrdší hranice než `ReadWritePaths` v systemd unitu:
 
 ```bash
-sudo deploy/install-container.sh
-sudo -u soc -H XDG_RUNTIME_DIR=/run/user/$(id -u soc) deploy/container-build.sh
+sudo deploy/install-container-soc-api.sh
+sudo -u soc -H XDG_RUNTIME_DIR=/run/user/$(id -u soc) deploy/container-build-soc-api.sh
 sudo systemctl enable --now soc-api-container
 ```
 
@@ -106,7 +106,7 @@ Hlavičce se přitom věří jen tehdy, když spojení přišlo od vlastní prox
 
 > **V kontejneru není proxy vidět na `127.0.0.1`.** Pasta překládá zdrojovou
 > adresu na adresu hostitele, takže `SOC_TRUSTED_PROXIES` musí obsahovat
-> právě ji — `container-run.sh` ji zjišťuje za běhu. Špatná hodnota nic
+> právě ji — `container-run-soc-api.sh` ji zjišťuje za běhu. Špatná hodnota nic
 > neohlásí, jen origin ACL přestane rozlišovat klienty; jak to ověřit, je
 > v [docs/install-container.md](docs/install-container.md).
 
@@ -212,10 +212,10 @@ endpointy, chybové kódy, stavy, proměnné prostředí, počty i odkazy.
 
 | soubor | k čemu |
 |---|---|
-| [`deploy/install-container.sh`](deploy/install-container.sh) | připraví hostitele (uživatel, subuid/subgid, linger, unit) |
+| [`deploy/install-container-soc-api.sh`](deploy/install-container-soc-api.sh) | připraví hostitele (uživatel, subuid/subgid, linger, unit) |
 | [`Dockerfile`](Dockerfile) | definice obrazu |
-| [`deploy/container-build.sh`](deploy/container-build.sh) | postaví obraz — [návod](docs/install-container.md#sestavení-obrazu) |
-| [`deploy/container-run.sh`](deploy/container-run.sh) | parametry běhu; unit ho jen volá |
+| [`deploy/container-build-soc-api.sh`](deploy/container-build-soc-api.sh) | postaví obraz — [návod](docs/install-container.md#sestavení-obrazu) |
+| [`deploy/container-run-soc-api.sh`](deploy/container-run-soc-api.sh) | parametry běhu; unit ho jen volá |
 | [`deploy/soc-api-container.service`](deploy/soc-api-container.service) | systemd unit (kontejner) |
 | [`deploy/soc-api.service`](deploy/soc-api.service) | systemd unit (nativní běh) |
 | [`deploy/nginx-soc.conf.example`](deploy/nginx-soc.conf.example) | vzor vhostu |

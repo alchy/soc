@@ -77,11 +77,11 @@ Rozsahy i `detail` se mění **bez zásahu do klíče** a platí okamžitě.
 ```bash
 git clone https://github.com/alchy/soc.git /www/soc/repo
 cd /www/soc/repo
-sudo deploy/install-container.sh
+sudo deploy/install-container-soc-api.sh
 ```
 
 Skript je idempotentní: založí uživatele `soc` (zamčený) a adresáře, deleguje
-subuid/subgid, zapne linger a nainstaluje `container-run.sh` plus systemd
+subuid/subgid, zapne linger a nainstaluje `container-run-soc-api.sh` plus systemd
 unit. Podrobně proč každá z těch věcí, viz
 [install-container.md](install-container.md).
 
@@ -89,7 +89,7 @@ unit. Podrobně proč každá z těch věcí, viz
 
 ```bash
 sudo -u soc -H XDG_RUNTIME_DIR=/run/user/$(id -u soc) \
-     /www/soc/repo/deploy/container-build.sh
+     /www/soc/repo/deploy/container-build-soc-api.sh
 sudo systemctl enable --now soc-api-container
 ```
 
@@ -216,7 +216,7 @@ sudo -l -U soc          # User soc is not allowed to run sudo
 
 Zpevnění platí pro procesy spuštěné tímhle unitem; shell získaný přes
 `sudo -iu soc` potomkem unitu není. Procesy, které sahají na malware, dostávají
-`no-new-privileges` uvnitř kontejneru z `container-run.sh`.
+`no-new-privileges` uvnitř kontejneru z `container-run-soc-api.sh`.
 
 **Kontejner**:
 
@@ -238,7 +238,7 @@ je tvrdší hranice než `ReadWritePaths` v systemd unitu.
 ```bash
 git -C /www/soc/repo pull
 sudo -u soc -H XDG_RUNTIME_DIR=/run/user/$(id -u soc) \
-     /www/soc/repo/deploy/container-build.sh
+     /www/soc/repo/deploy/container-build-soc-api.sh
 sudo systemctl restart soc-api-container
 ```
 

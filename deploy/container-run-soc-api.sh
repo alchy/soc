@@ -5,7 +5,7 @@
 # nebo prepinacem; systemd unit `soc-api-container.service` vola tenhle skript
 # s `--foreground`, takze se provoz a rucni spusteni nemuzou rozejit.
 #
-#     deploy/container-run.sh --help
+#     deploy/container-run-soc-api.sh --help
 set -eu
 
 IMAGE="${SOC_IMAGE:-localhost/soc-api:latest}"
@@ -13,7 +13,7 @@ NAME="${SOC_NAME:-soc-api}"
 DOMOV="${HOME:-/www/soc}"
 VAULT="${SOC_VAULT_HOST:-$DOMOV/vault}"
 # Adresar logu. Montuje se dovnitr jako /var/log/soc, takze si tam sluzba
-# pise vlastni access.log; podman do nej vedle toho pise service.log
+# pise vlastni access.log; podman do nej vedle toho pise soc-api.log
 # (stdout/stderr kontejneru). Oboji tedy prezije smazani kontejneru.
 LOGDIR="${SOC_LOG:-$DOMOV/logs}"
 PORT="${SOC_PORT:-8095}"
@@ -56,7 +56,7 @@ FOREGROUND=0
 
 napoveda() {
     cat <<'NAPOVEDA'
-Pouziti: container-run.sh [prepinace]
+Pouziti: container-run-soc-api.sh [prepinace]
 
   --image TAG        obraz (SOC_IMAGE)                 [localhost/soc-api:latest]
   --name JMENO       jmeno kontejneru (SOC_NAME)       [soc-api]
@@ -108,7 +108,12 @@ set -- \
     --network "pasta:--map-host-loopback,$HOST_ADDR" \
     --publish "$BIND:$PORT:8095" \
     --userns "keep-id:uid=1000,gid=1000" \
-    --volume "$VAULT:/var/lib/soc/vault:Z,nosuid,nodev,noexec" \
+    `# SEL-2: vault sdili soc-portal (RO) -> SDILENY label 'z' (male), ne 'Z'.` \
+    `# Label se prepisuje pri kazdem startu; s 'Z' by si ho soc-api vzalo do sve` \
+    `# kategorie a portal by po restartu prestal cist (dnes maskuje Permissive).` \
+    --volume "$VAULT:/var/lib/soc/vault:z,nosuid,nodev,noexec" \
+    `# Logy montuje jen soc-api (portal si pise pres podman log-driver, ne mountem)` \
+    `# -> privatni 'Z' je tu spravne (SEL-2).` \
     --volume "$LOGDIR:/var/log/soc:Z,nosuid,nodev,noexec" \
     --env "SOC_AM_URL=http://$HOST_ADDR:$AM_PORT" \
     --env "SOC_LOG_DIR=/var/log/soc" \
@@ -116,7 +121,7 @@ set -- \
     --env "SOC_TRUSTED_PROXIES=$TRUSTED" \
     --env "SOC_MAX_UPLOAD=$MAX_UPLOAD" \
     --log-driver k8s-file \
-    --log-opt "path=$LOGDIR/service.log" \
+    --log-opt "path=$LOGDIR/soc-api.log" \
     --log-opt max-size=10m \
     --stop-timeout 15
 

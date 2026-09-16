@@ -14,7 +14,7 @@ a jediné, kam smí zapsat, je namontovaný vault.
 |---|---|---|---|
 | kód a závislosti | **v obrazu** | — | `/app` |
 | vault se vzorky | **mimo** | `~/vault` | `/var/lib/soc/vault` |
-| konfigurace | proměnné prostředí | `container-run.sh` | — |
+| konfigurace | proměnné prostředí | `container-run-soc-api.sh` | — |
 | access log | **mimo**, mount | `~/logs/access.log` | `/var/log/soc/access.log` |
 | provozní log | **mimo** | `~/logs/service.log` | — (píše ho podman ze stdout) |
 | TLS | **mimo** | reverzní proxy | — |
@@ -26,11 +26,11 @@ a jediné, kam smí zapsat, je namontovaný vault.
 ## Sestavení obrazu
 
 Definice je [`Dockerfile`](../Dockerfile) v kořeni repozitáře, staví ho
-[`deploy/container-build.sh`](../deploy/container-build.sh).
+[`deploy/container-build-soc-api.sh`](../deploy/container-build-soc-api.sh).
 
 ```bash
 sudo -u soc -H XDG_RUNTIME_DIR=/run/user/$(id -u soc) \
-     deploy/container-build.sh                    # nebo: [tag], vychozi localhost/soc-api:latest
+     deploy/container-build-soc-api.sh                    # nebo: [tag], vychozi localhost/soc-api:latest
 ```
 
 ### Co je v obrazu a co ne
@@ -101,18 +101,18 @@ curl -s http://127.0.0.1:8096/api/v1/healthz
 ## Instalace
 
 ```bash
-sudo deploy/install-container.sh
+sudo deploy/install-container-soc-api.sh
 ```
 
 Skript je idempotentní a udělá čtyři věci: založí uživatele a adresáře,
-**deleguje subuid/subgid**, **zapne linger** a nainstaluje `container-run.sh`
+**deleguje subuid/subgid**, **zapne linger** a nainstaluje `container-run-soc-api.sh`
 jako `/usr/local/bin/soc-api-container` plus systemd unit.
 
 Pak obraz a start:
 
 ```bash
 sudo -u soc -H XDG_RUNTIME_DIR=/run/user/$(id -u soc) \
-     deploy/container-build.sh
+     deploy/container-build-soc-api.sh
 sudo systemctl enable --now soc-api-container
 ```
 
@@ -150,7 +150,7 @@ Nativní služba viděla nginx přicházet z `127.0.0.1`. **Kontejner ho
 z `127.0.0.1` nevidí** — pasta překládá zdrojovou adresu spojení
 z hostitelské smyčky na adresu hostitele na jeho výchozím rozhraní.
 
-`container-run.sh` ji proto zjišťuje za běhu (`ip route get`) a přidává do
+`container-run-soc-api.sh` ji proto zjišťuje za běhu (`ip route get`) a přidává do
 `SOC_TRUSTED_PROXIES`. Napevno zapsaná by se při změně IP stroje tiše
 rozešla se skutečností.
 
@@ -221,7 +221,7 @@ jako uživatel `soc`. Tomu má zabránit ve zvýšení oprávnění unit:
 > ```
 >
 > **Co se tím ztrácí:** nic, co by chránilo malware-facing procesy. Ty běží
-> *uvnitř* kontejneru a `no-new-privileges` dostávají z `container-run.sh`
+> *uvnitř* kontejneru a `no-new-privileges` dostávají z `container-run-soc-api.sh`
 > (viz vrstva 2) spolu s `--cap-drop ALL`. Unit-level flag navíc kryl už jen
 > podmanovu supervizní vrstvu na hostiteli — tedy právě to, co `newuidmap`
 > potřebuje.
@@ -250,7 +250,7 @@ Nativní unit (`deploy/soc-api.service`) `NoNewPrivileges=yes` **má** — tam
 Obraz navíc **nemá jedinou suid binárku** — `Dockerfile` je odstraňuje
 (`find / -perm /6000 -exec chmod -s`). Base image jich nese jedenáct včetně
 `/usr/bin/su`. `no-new-privileges` je sice zvednout nenechá, ale tohle je
-druhá vrstva pro případ, že by první někdo při úpravě `container-run.sh`
+druhá vrstva pro případ, že by první někdo při úpravě `container-run-soc-api.sh`
 vypnul.
 
 Rozbalené soubory přicházejí o `x` bit už při rozbalování; `noexec` na mountu
@@ -327,7 +327,7 @@ změna parametru znamená restart. Přebíjí se v `/etc/sysconfig/soc-api-conta
 ```bash
 git -C /www/soc/repo pull
 sudo -u soc -H XDG_RUNTIME_DIR=/run/user/$(id -u soc) \
-     /www/soc/repo/deploy/container-build.sh
+     /www/soc/repo/deploy/container-build-soc-api.sh
 sudo systemctl restart soc-api-container
 ```
 

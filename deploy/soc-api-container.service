@@ -2,13 +2,13 @@
 #
 # Kontejner bezi jako uzivatel `soc` - ne jako root. Aby to slo bez
 # prihlaseni, musi mit uzivatel zapnuty linger a delegovane subuid/subgid;
-# oboji zaridi deploy/install-container.sh.
+# oboji zaridi deploy/install-container-soc-api.sh.
 #
 # Port se publikuje na 127.0.0.1 - sluzba NENI dostupna zvenci. Pred ni
 # patri reverzni proxy s TLS na hostiteli.
 #
 # Instalace:
-#     sudo deploy/install-container.sh
+#     sudo deploy/install-container-soc-api.sh
 #     systemctl enable --now soc-api-container
 
 [Unit]
@@ -42,7 +42,7 @@ Environment=XDG_RUNTIME_DIR=/run/user/978
 Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/978/bus
 Environment=PATH=/usr/local/bin:/usr/bin:/bin
 
-# Jediny zdroj pravdy o parametrech behu je container-run.sh; unit ho jen vola,
+# Jediny zdroj pravdy o parametrech behu je container-run-soc-api.sh; unit ho jen vola,
 # aby se rucni spusteni a provoz nemohly rozejit. Parametry se prebijeji
 # souborem nize (SOC_VAULT_HOST, SOC_PORT, SOC_HOST_ADDR, ...).
 EnvironmentFile=-/etc/sysconfig/soc-api-container
@@ -76,7 +76,7 @@ TimeoutStopSec=30
 #     sudo -u soc setpriv --no-new-privs bash -c '...totez...'     # EPERM
 #
 # Co se tim ztratilo a proc to nevadi: procesy, ktere sahaji na malware, bezi
-# UVNITR kontejneru a no-new-privileges dostavaji z container-run.sh
+# UVNITR kontejneru a no-new-privileges dostavaji z container-run-soc-api.sh
 # (--security-opt no-new-privileges) spolu s --cap-drop ALL. Unit-level flag
 # kryl navic uz jen podmanovu supervizni vrstvu na hostiteli - tedy prave to,
 # co newuidmap potrebuje. Zbyva RestrictSUIDSGID nize, ucet mimo sudoers se

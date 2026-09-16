@@ -1,7 +1,7 @@
 #!/bin/sh
 # Pripravi hostitele pro beh soc-api v rootless kontejneru.
 #
-#     sudo deploy/install-container.sh
+#     sudo deploy/install-container-soc-api.sh
 #
 # Skript je idempotentni - da se pustit znovu, nic nerozbije. Ctyri veci,
 # bez kterych rootless podman ze systemoveho unitu nenajede a z hlasek to
@@ -10,12 +10,12 @@
 #   1. systemovy uzivatel a adresare (vault, logy),
 #   2. delegovane subuid/subgid - bez nich podman nenamapuje UID dovnitr,
 #   3. linger - bez nej po bootu neexistuje /run/user/<uid>,
-#   4. container-run.sh jako /usr/local/bin/soc-api-container + systemd unit.
+#   4. container-run-soc-api.sh jako /usr/local/bin/soc-api-container + systemd unit.
 #
 # Obraz se NESTAVI - to je krok navic, protoze se stavi jako uzivatel sluzby:
 #
 #     sudo -u soc -H XDG_RUNTIME_DIR=/run/user/$(id -u soc) \
-#          deploy/container-build.sh
+#          deploy/container-build-soc-api.sh
 set -eu
 
 UZIVATEL="${SOC_USER:-soc}"
@@ -56,7 +56,7 @@ fi
 loginctl enable-linger "$UZIVATEL"
 
 # --- 4. skript a unit ------------------------------------------------------
-install -m 0755 "$KOREN/deploy/container-run.sh" /usr/local/bin/soc-api-container
+install -m 0755 "$KOREN/deploy/container-run-soc-api.sh" /usr/local/bin/soc-api-container
 
 UID_SLUZBY=$(id -u "$UZIVATEL")
 sed -e "s|user@978\.service|user@$UID_SLUZBY.service|g" \
@@ -66,6 +66,9 @@ sed -e "s|user@978\.service|user@$UID_SLUZBY.service|g" \
     -e "s|HOME=/www/soc|HOME=$DOMOV|" \
     "$KOREN/deploy/soc-api-container.service" \
     > /etc/systemd/system/soc-api-container.service
+# SVC-1: mod nastavit vyslovne. Unit psany presmerovanim jinak zdedi umask
+# relace, ve ktere se instalovalo - jednou 0644, podruhe 0755, a nikdo to nevidi.
+chmod 0644 /etc/systemd/system/soc-api-container.service
 
 systemctl daemon-reload
 
@@ -77,7 +80,7 @@ Hostitel je pripraveny. Dal:
      obrazu v jeho domovskem adresari):
 
        sudo -u $UZIVATEL -H XDG_RUNTIME_DIR=/run/user/$UID_SLUZBY \\
-            $KOREN/deploy/container-build.sh
+            $KOREN/deploy/container-build-soc-api.sh
 
   2. spustte sluzbu:
 

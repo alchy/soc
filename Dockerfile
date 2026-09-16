@@ -1,6 +1,6 @@
 # Obraz sluzby. Stavi se z korene repozitare:
 #
-#     deploy/container-build.sh          (nebo: podman build -t soc-api .)
+#     deploy/container-build-soc-api.sh          (nebo: podman build -t soc-api .)
 #
 # V obrazu NENI vault ani konfigurace. Vault se montuje zvenci a je jediny
 # zapisovatelny adresar, ktery sluzba ma - to je hlavni duvod, proc tahle
@@ -21,13 +21,13 @@ RUN pip install --no-cache-dir .
 # Obrazu setrit netreba: nic z toho sluzba nepotrebuje a kazda z nich je
 # nastroj navic pro toho, kdo by uvnitr dostal shell. `--security-opt
 # no-new-privileges` je uz zvednout nenecha, ale tohle je druha vrstva -
-# kdyby prvni nekdo pri uprave container-run.sh vypnul.
+# kdyby prvni nekdo pri uprave container-run-soc-api.sh vypnul.
 #
 #   /usr/bin/su, mount, umount, passwd, newgrp, chsh, chfn, gpasswd,
 #   chage, expiry, /usr/sbin/unix_chkpwd
 RUN find / -xdev -perm /6000 -type f -exec chmod -s {} + 2>/dev/null || true
 
-COPY deploy/entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY deploy/entrypoint-soc-api.sh /usr/local/bin/entrypoint.sh
 
 # Vault zalozit uz tady a rovnou uzivateli sluzby: anonymni svazek podle
 # VOLUME dedi vlastnictvi z obrazu, a kdyby patril rootovi, `soc` by do nej
