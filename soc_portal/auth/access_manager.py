@@ -34,7 +34,7 @@ class AccessManagerError(Exception):
 
 class AccessManagerAuthProvider:
     name = "access_manager"
-    credential_label = "TOTP kod"
+    credential_label = "TOTP code"
 
     def __init__(self, url: str, auth_path: str, whoami_path: str, key: str,
                  realm: str, timeout_s: int, log: logging.Logger,

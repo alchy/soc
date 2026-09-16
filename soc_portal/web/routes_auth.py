@@ -22,9 +22,9 @@ from .deps import client_ip, provider
 bp = Blueprint("auth", name := "auth")
 
 # Zpravy pro uzivatele - zamerne obecne (krome throttle, kde ma smysl rict "za N s").
-_MSG_BAD = "Neplatne prihlaseni. Zkuste to znovu."
-_MSG_BACKEND = "Overovaci sluzba je docasne nedostupna. Zkuste to za chvili."
-_MSG_FORBIDDEN = "Overeno, ale nemate opravneni do tohoto portalu."
+_MSG_BAD = "Invalid login. Please try again."
+_MSG_BACKEND = "Authentication service is temporarily unavailable. Try again shortly."
+_MSG_FORBIDDEN = "Authenticated, but you are not authorized for this portal."
 
 
 def _is_safe_next(target: str | None) -> bool:
@@ -54,7 +54,7 @@ def login_post():
                                error=message, retry_after=retry_after), status
 
     if result.outcome == THROTTLED:
-        return fail(f"Prilis mnoho pokusu. Zkuste to za {result.retry_after} s.",
+        return fail(f"Too many attempts. Try again in {result.retry_after} s.",
                     status=429, retry_after=result.retry_after)
     if result.outcome == ERROR:
         return fail(_MSG_BACKEND, status=502)

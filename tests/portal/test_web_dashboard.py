@@ -43,8 +43,8 @@ def test_dashboard_rows_are_expandable(client):
 
     html = client.get("/").get_data(as_text=True)
 
-    # radky jsou nativni <details> se souhrnem
-    assert '<details class="row">' in html
+    # radky jsou nativni <details> se souhrnem (.row-item, ne .row - Bootstrap)
+    assert '<details class="row-item">' in html
     assert "<summary>" in html
     # podrobnosti (plny sha256 + odkaz na detail) lezi v rozbalovaci casti
     sha = samples[0]["sha256"]

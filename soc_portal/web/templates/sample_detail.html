@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% block title %}Vzorek {{ sha256[:12] }} - SOC portal{% endblock %}
+{% block title %}Sample {{ sha256[:12] }} - SOC portal{% endblock %}
 
-{# ── jednotny vizualni jazyk detailu ─────────────────────────────────────────
-   semafor: ok (zelena) / info+warn (zluta) / high (cervena)
-   - .scorechip  velky stitek se skore v hlavicce panelu
-   - .authline   rada chipu SPF/DKIM/DMARC za kazdeho overovatele
-   - .notice     maly roundbox pro jeden signal/nalez (barva = sila)          #}
+{# ── unified visual language ─────────────────────────────────────────────────
+   traffic light: ok (green) / info+warn (yellow) / high (red)
+   - .scorechip  large score pill in the panel heading
+   - .sigrow     full-width signal container: SEVERITY | TYPE | comment | +pts
+   - .authline   row of SPF/DKIM/DMARC chips per verifier                     #}
 
 {% macro auth_badge(label, v) -%}
   {%- set cls = 'ok' if v == 'pass'
@@ -16,18 +16,17 @@
 
 {% macro score_chip(score) -%}
   {%- set cls = {'ok': 'ok', 'info': 'warn', 'warn': 'warn', 'high': 'bad'}[score.band] -%}
-  <span class="scorechip {{ cls }}" title="soucet bodu za signaly z hlavicek; vyssi = podezrelejsi">
-    skore {{ score.points }}</span>
+  <span class="scorechip {{ cls }}" title="sum of points for header signals; higher = more suspicious">
+    score {{ score.points }}</span>
 {%- endmacro %}
 
 {% macro header_analysis(a, score) -%}
-  {# jeden souvisly blok signalnich radku - nefragmentovany jinymi daty;
-     detail overovatelu a fakta jsou sbalene pod nim #}
-  <h3 class="boxlabel">Signaly z hlavicek (offline)</h3>
+  {# one uninterrupted block of signal rows; verifier detail and raw facts
+     are folded below it #}
   {% for c in score.contributions %}
   <div class="sigrow sev-{{ c.level }}">
-    <span class="sev">{{ {'info': 'INFO', 'low': 'NIZKA', 'medium': 'STREDNI',
-                          'high': 'VYSOKA', 'critical': 'KRITICKA'}[c.level] }}</span>
+    <span class="sev">{{ {'info': 'INFO', 'low': 'LOW', 'medium': 'MEDIUM',
+                          'high': 'HIGH', 'critical': 'CRITICAL'}[c.level] }}</span>
     <span class="what">{{ c.title }}</span>
     <span class="desc">{{ c.text }}</span>
     <span class="pts">+{{ c.points }}</span>
@@ -35,157 +34,197 @@
   {% else %}
   <div class="sigrow sev-ok">
     <span class="sev">OK</span>
-    <span class="desc">Hlavicky bez podezrelych signalu.</span>
+    <span class="desc">No suspicious signals in the headers.</span>
   </div>
   {% endfor %}
 
   <details class="fold">
-    <summary>Detail autentizace ({{ a.auth|length }} overovatel{{ 'e' if 1 < a.auth|length < 5 else ('' if a.auth|length == 1 else 'u') }}) a fakta</summary>
+    <summary>Authentication detail ({{ a.auth|length }} verifier{{ 's' if a.auth|length != 1 }}) and facts</summary>
     {% if a.auth|length > 1 %}
-    <p class="muted authnote">Kazda brana po ceste razitkuje vlastni verdikt, proto je
-      SPF/DKIM/DMARC videt vickrat. Skore vyse bere nejhorsi vysledek kazdeho mechanismu.</p>
+    <p class="text-secondary small authnote">Each gateway along the path stamps its own verdict,
+      which is why SPF/DKIM/DMARC appears multiple times. <strong>Decisive</strong> is the entry
+      gateway - the only one that saw the sender's real IP. Later verifiers (behind the hybrid)
+      measure our own infrastructure: their SPF is never scored, DKIM/DMARC only when the
+      entry gateway did not measure.</p>
     {% endif %}
     {% for r in a.auth %}
     <div class="authline">
       {{ auth_badge('SPF', r.spf) }}{{ auth_badge('DKIM', r.dkim) }}{{ auth_badge('DMARC', r.dmarc) }}
-      <span class="muted mono authsrv">
-        {%- if r.server %}overil: {{ r.server }}{% else %}koncova brana (jmeno neuvedla){% endif %}
-        {%- if r.original %} · puvodni verdikt (Authentication-Results-Original){% endif %}</span>
+      {% if r.authoritative %}<span class="badge ok">decisive</span>
+      {% else %}<span class="badge pending">informational</span>{% endif %}
+      <span class="text-secondary mono authsrv">
+        {%- if r.server %}verified by: {{ r.server }}{% else %}final gateway (name not stated){% endif %}
+        {%- if r.original %} · entry-gateway verdict (Authentication-Results-Original){% endif %}</span>
     </div>
     {% else %}
-    <p class="muted">Zadna Authentication-Results hlavicka - zprava nesla pres overujici branu.</p>
+    <p class="text-secondary">No Authentication-Results header - the message did not pass a verifying gateway.</p>
     {% endfor %}
     <dl class="kv facts">
       <dt>From</dt><dd class="mono">{{ a.from_display }} &lt;{{ a.from_addr }}&gt;</dd>
+      {% if a.to %}<dt>To</dt><dd class="mono">{{ a.to }}</dd>{% endif %}
       {% if a.reply_to %}<dt>Reply-To</dt><dd class="mono">{{ a.reply_to }}</dd>{% endif %}
       {% if a.return_path %}<dt>Return-Path</dt><dd class="mono">{{ a.return_path }}</dd>{% endif %}
       {% if a.message_id %}<dt>Message-ID</dt><dd class="mono">{{ a.message_id }}</dd>{% endif %}
       {% if a.mailer %}<dt>X-Mailer</dt><dd class="mono">{{ a.mailer }}</dd>{% endif %}
+      {% set origin = (a.hops | selectattr('from_host') | list | first) %}
+      {% if origin %}<dt>Origin</dt><dd class="mono">{{ origin.from_host }}
+          {% if origin.from_info %}<span class="text-secondary">({{ origin.from_info }})</span>{% endif %}</dd>{% endif %}
     </dl>
   </details>
+
+  {% if a.hops %}
+  <details class="fold">
+    <summary>Delivery path ({{ a.hops|length }} hop{{ 's' if a.hops|length != 1 }})</summary>
+    <p class="text-secondary small authnote">From origin to recipient. Trustworthy only from our
+      gateways down - the sender may have forged the bottom hops; that is why the path is not scored.</p>
+    <ol class="hops">
+      {% for h in a.hops %}
+      <li><span class="mono">{{ h.from_host or '(local submission)' }}</span>
+          {%- if h.from_info %} <span class="text-secondary">({{ h.from_info }})</span>{% endif %}
+          → <span class="mono">{{ h.by_host or '?' }}</span>
+          {%- if h.count > 1 %} <span class="badge pending">×{{ h.count }}</span>{% endif %}
+          {%- if h.when %} <span class="text-secondary mono">{{ h.when }}</span>{% endif %}</li>
+      {% endfor %}
+    </ol>
+  </details>
+  {% endif %}
 {%- endmacro %}
 
 {% block body %}
-<main>
-  <p class="back"><a href="{{ url_for('samples.dashboard') }}">← zpet na dashboard</a></p>
+<main class="container-xxl">
+  <p class="back"><a href="{{ url_for('samples.dashboard') }}">← back to dashboard</a></p>
 
-  <div class="grid2">
-    <div class="panel">
-      <h2>E-mail</h2>
-      <dl class="kv">
-        <dt>Odesilatel</dt><dd>{{ metadata.SenderName or '-' }}
-            {% if metadata.SenderEmail %}<span class="mono muted">&lt;{{ metadata.SenderEmail }}&gt;</span>{% endif %}</dd>
-        <dt>Predmet</dt><dd>{{ metadata.Subject or '-' }}</dd>
-        <dt>Prijato</dt><dd class="mono">{{ summary.received_at }}</dd>
-      </dl>
+  <div class="row g-3 mb-3">
+    <div class="col-md-6">
+      <div class="card h-100"><div class="card-body">
+        <h2 class="card-h">E-mail</h2>
+        <dl class="kv">
+          <dt>Sender</dt><dd>{{ metadata.SenderName or '-' }}
+              {% if metadata.SenderEmail %}<span class="mono text-secondary">&lt;{{ metadata.SenderEmail }}&gt;</span>{% endif %}</dd>
+          <dt>Subject</dt><dd>{{ metadata.Subject or '-' }}</dd>
+          <dt>Received</dt><dd class="mono">{{ summary.received_at }}</dd>
+        </dl>
+      </div></div>
     </div>
-    <div class="panel">
-      <h2>Vzorek</h2>
-      <dl class="kv">
-        <dt>Soubor</dt><dd class="mono">{{ summary.filename }}</dd>
-        <dt>Velikost</dt><dd class="mono">{{ summary.size | human_size }}</dd>
-        <dt>Stav</dt><dd class="mono">{{ summary.state }} / extrakce: {{ summary.extraction_status }}
-            {% if summary.encrypted %}(sifrovano){% endif %}</dd>
-        <dt>Analyza</dt><dd class="mono">{{ summary.analysis_state }}</dd>
-        <dt>sha256</dt><dd class="mono" style="font-size:11px; word-break:break-all;">{{ sha256 }}</dd>
-      </dl>
+    <div class="col-md-6">
+      <div class="card h-100"><div class="card-body">
+        <h2 class="card-h">Sample</h2>
+        <dl class="kv">
+          <dt>File</dt><dd class="mono">{{ summary.filename }}</dd>
+          <dt>Size</dt><dd class="mono">{{ summary.size | human_size }}</dd>
+          <dt>State</dt><dd class="mono">{{ summary.state }} / extraction: {{ summary.extraction_status }}
+              {% if summary.encrypted %}(encrypted){% endif %}</dd>
+          <dt>Analysis</dt><dd class="mono">{{ summary.analysis_state }}</dd>
+          <dt>sha256</dt><dd class="mono" style="font-size:11px; word-break:break-all;">{{ sha256 }}</dd>
+        </dl>
+      </div></div>
     </div>
   </div>
 
   {% for n in nested %}
-  <div class="panel">
-    <h2>Reportovana zprava{% if nested|length > 1 %} {{ loop.index }}/{{ nested|length }}{% endif %}
-        {% if n.score %}{{ score_chip(n.score) }}{% endif %}</h2>
+  {# dve VIZUALNE ODLISNE karty: zprava samotna vs. jeji signaly #}
+  <div class="card mb-3 card-message"><div class="card-body">
+    <h2 class="card-h">Reported message{% if nested|length > 1 %} {{ loop.index }}/{{ nested|length }}{% endif %}</h2>
     {% if n.msg %}
     <dl class="kv">
-      <dt>Odesilatel</dt><dd>{{ n.msg.sender or '-' }}</dd>
-      <dt>Predmet</dt><dd>{{ n.msg.subject or '-' }}</dd>
-      <dt>Datum</dt><dd class="mono">{{ n.msg.date or '-' }}</dd>
+      <dt>Sender</dt><dd>{{ n.msg.sender or '-' }}</dd>
+      <dt>Subject</dt><dd>{{ n.msg.subject or '-' }}</dd>
+      <dt>Date</dt><dd class="mono">{{ n.msg.date or '-' }}</dd>
       {% if n.msg.attachments %}
-      <dt>Prilohy</dt><dd>{% for a in n.msg.attachments %}<span class="mono">{{ a.name }}</span> ({{ a.size | human_size }}){% if not loop.last %}, {% endif %}{% endfor %}</dd>
+      <dt>Attachments</dt><dd>{% for a in n.msg.attachments %}<span class="mono">{{ a.name }}</span> ({{ a.size | human_size }}){% if not loop.last %}, {% endif %}{% endfor %}</dd>
       {% endif %}
-      <dt>Zdroj</dt><dd class="mono muted">{{ n.path }}</dd>
+      <dt>Source</dt><dd class="mono text-secondary">{{ n.path }}</dd>
     </dl>
-    {% if n.analysis %}{{ header_analysis(n.analysis, n.score) }}{% endif %}
 
     {% if n.msg.body_html or n.body_text %}
-    <h3 class="boxlabel">Obsah zpravy</h3>
-    <div class="notice warn">⚠ Nepratelsky obsah - odkazy defangovane (hxxps://…[.]…),
-      HTML izolovane v sandboxu. Original ke stazeni v Rozbalenych souborech.</div>
+    <h3 class="boxlabel">Message content</h3>
+    <div class="notice warn">⚠ Hostile content - links are defanged (hxxps://…[.]…),
+      HTML is sandboxed. The original is available under Extracted files.</div>
     {% endif %}
     {% if n.msg.body_html %}
     <iframe class="body" sandbox
             referrerpolicy="no-referrer"
             src="{{ url_for('samples.nested_body', sha256=sha256, idx=n.idx) }}"
-            title="HTML telo reportovane zpravy (izolovane)"></iframe>
+            title="HTML body of the reported message (sandboxed)"></iframe>
     {% endif %}
     {% if n.body_text %}
     <details class="fold">
-      <summary>Plaintext telo (defangovane)</summary>
+      <summary>Plaintext body (defanged)</summary>
       <pre class="text">{{ n.body_text }}</pre>
     </details>
     {% endif %}
     {% if not n.msg.body_html and not n.body_text %}
-    <p class="muted">Zprava nema citelne telo.</p>
+    <p class="text-secondary">The message has no readable body.</p>
     {% endif %}
     {% else %}
-    <div class="notice bad">Prilohu <span class="mono">{{ n.path }}</span> se nepodarilo
-      precist jako zpravu - je ke stazeni v Rozbalenych souborech.</div>
+    <div class="notice bad">Attachment <span class="mono">{{ n.path }}</span> could not be
+      read as a message - it is available for download under Extracted files.</div>
     {% endif %}
-  </div>
+  </div></div>
+
+  {% if n.analysis %}
+  <div class="card mb-3 card-signals"><div class="card-body">
+    <h2 class="card-h">Header signals{% if nested|length > 1 %} — message {{ loop.index }}{% endif %}
+        {% if n.score %}{{ score_chip(n.score) }}{% endif %}</h2>
+    {{ header_analysis(n.analysis, n.score) }}
+  </div></div>
+  {% endif %}
   {% endfor %}
 
   {% if headers_text %}
-  <div class="panel">
-    <h2>Hlavicky{% if wrapper_score %} {{ score_chip(wrapper_score) }}{% endif %}</h2>
+  <div class="card mb-3"><div class="card-body">
+    <h2 class="card-h">Headers{% if wrapper_score %} {{ score_chip(wrapper_score) }}{% endif %}</h2>
     {% if wrapper_analysis %}{{ header_analysis(wrapper_analysis, wrapper_score) }}{% endif %}
     <details class="fold">
-      <summary>Plny text hlavicek</summary>
+      <summary>Full headers</summary>
       <pre class="text">{{ headers_text }}</pre>
     </details>
-  </div>
+  </div></div>
   {% endif %}
 
   {% if has_body %}
-  <div class="panel">
-    <h2>{% if nested %}Telo reportu (obal){% else %}HTML telo{% endif %}</h2>
-    <div class="notice warn">⚠ Nepratelsky obsah - zobrazuje se izolovane (sandbox + CSP),
-      odkazy defangovane.</div>
+  <div class="card mb-3"><div class="card-body">
+    <h2 class="card-h">{% if nested %}Report wrapper body{% else %}HTML body{% endif %}</h2>
+    <div class="notice warn">⚠ Hostile content - rendered sandboxed (CSP), links defanged.</div>
     <iframe class="body{% if nested %} short{% endif %}" sandbox
             referrerpolicy="no-referrer"
             src="{{ url_for('samples.sample_body', sha256=sha256) }}"
-            title="HTML telo e-mailu (izolovane)"></iframe>
-  </div>
+            title="HTML body of the e-mail (sandboxed)"></iframe>
+  </div></div>
   {% endif %}
 
-  <div class="grid2">
-    <div class="panel">
-      <h2>Rozbalene soubory</h2>
-      {% if files %}
-      <table>
-        <thead><tr><th>Soubor</th><th>Velikost</th><th></th></tr></thead>
-        <tbody>
-          {% for f in files %}
-          <tr>
-            <td class="mono">{{ f.path }}</td>
-            <td class="mono">{{ f.size | human_size }}</td>
-            <td><a href="{{ url_for('samples.sample_file', sha256=sha256, relpath=f.path) }}">stahnout</a></td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      {% else %}<p class="muted">Zadne rozbalene soubory.</p>{% endif %}
+  <div class="row g-3 mb-3">
+    <div class="col-md-6">
+      <div class="card h-100"><div class="card-body">
+        <h2 class="card-h">Extracted files</h2>
+        {% if files %}
+        <table class="table table-sm mb-0">
+          <thead><tr><th>File</th><th>Size</th><th></th></tr></thead>
+          <tbody>
+            {% for f in files %}
+            <tr>
+              <td class="mono">{{ f.path }}</td>
+              <td class="mono">{{ f.size | human_size }}</td>
+              <td><a href="{{ url_for('samples.sample_file', sha256=sha256, relpath=f.path) }}">download</a></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}<p class="text-secondary">No extracted files.</p>{% endif %}
+      </div></div>
     </div>
 
-    <div class="panel">
-      <h2>Udalosti</h2>
-      <ul class="events">
-        {% for e in events %}
-        <li>{{ e.t or '' }} · {{ e.event or e.malformed or e|tojson }}</li>
-        {% else %}
-        <li>Zadne udalosti.</li>
-        {% endfor %}
-      </ul>
+    <div class="col-md-6">
+      <div class="card h-100"><div class="card-body">
+        <h2 class="card-h">Events</h2>
+        <ul class="events">
+          {% for e in events %}
+          <li>{{ e.t or '' }} · {{ e.event or e.malformed or e|tojson }}</li>
+          {% else %}
+          <li>No events.</li>
+          {% endfor %}
+        </ul>
+      </div></div>
     </div>
   </div>
 </main>

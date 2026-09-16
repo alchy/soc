@@ -14,7 +14,7 @@ from .provider import DENIED, OK, AuthResult, Identity
 
 class MockAuthProvider:
     name = "mock"
-    credential_label = "Heslo (demo)"
+    credential_label = "Password (demo)"
 
     def __init__(self, user: str, password: str, group: str, log: logging.Logger):
         self._user = user

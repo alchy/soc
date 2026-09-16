@@ -8,9 +8,11 @@ zobrazuje, netriaguje data ve vaultu.
 
 ```
 soc_mail/             SDÍLENÁ KNIHOVNA (vlastní balíček, víc komponent — ne monolit):
-│                     msg.py čtení .msg · defang.py zneškodnění obsahu ·
-│                     headers.py offline analýza hlaviček (viz header-analysis.md);
-│                     žádný Flask/vault/HTTP, viz ADR-9
+│                     models.py sdílené typy (Finding, MailContext) · msg.py čtení .msg ·
+│                     defang.py zneškodnění obsahu · received.py cesta doručení ·
+│                     headers.py parsování hlaviček + orchestrace · detectors.py
+│                     registr malých detektorů signálů · scoring.py průhledné skóre;
+│                     žádný Flask/vault/HTTP, viz ADR-9 (header-analysis.md)
 soc_portal/
 ├─ config.py          všechny volby z prostředí; fail-fast validace na startu
 ├─ logging_setup.py   strukturované JSON logy (stejný tvar jako soc-api / AM)
@@ -176,6 +178,18 @@ tajemství, nebo je klíč z jiného realmu, portál **nenastartuje** — místo
      hlavně copy-paste. Original zůstává ke stažení (nikdy inline).
   Testy: `tests/mail/test_msg.py` (knihovna), `tests/portal/test_web_sample_detail.py`
   (routy + defang v odpovědích).
+
+- **ADR-10: anglické UI, Bootstrap (vendored), dashboard ukazuje reportovanou zprávu.**
+  SOC tým je multilingvální — veškeré uživatelské texty (šablony, hlášky loginu,
+  texty signálů z `soc_mail`) jsou anglicky; česky zůstávají komentáře kódu a docs.
+  Styling stojí na **Bootstrapu 5.3 vendorovaném lokálně** (`static/vendor/`) —
+  žádné CDN: portál musí běžet bez internetu a CSP externí zdroje nepouští; JS
+  bundle Bootstrapu nepřibalujeme (rozbalování řeší nativní `<details>`, žádný
+  JS stále platí). Řádek dashboardu ukazuje **to podstatné: reportovanou zprávu**
+  (skutečný odesílatel/předmět z vnořeného `.msg`) + skóre hlavíček v semaforu;
+  obal reportu je v rozbalené části jako „Reported by". Parsování pro řádky se
+  drží v in-process `lru_cache` — vzorek je obsahově adresovaný (sha256), tedy
+  neměnný, cache se nikdy nezneplatňuje a portál zůstává bez perzistence.
 
 ## 5. Provoz
 

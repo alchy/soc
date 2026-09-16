@@ -10,6 +10,7 @@ Analytik se nesmi nechat "popnout" vzorkem, ktery zkouma.
 from __future__ import annotations
 
 import logging
+from functools import lru_cache
 
 from flask import (Blueprint, Response, abort, g, render_template, request,
                    send_file)
@@ -48,6 +49,40 @@ def healthz():
     return {"status": "ok", "vault_present": config.VAULT.is_dir()}
 
 
+@lru_cache(maxsize=2048)
+def _triage_summary(sha256: str) -> dict:
+    """Souhrn pro radek dashboardu: SKUTECNY odesilatel/predmet (z vnorene
+    reportovane zpravy, kdyz existuje) + skore hlavicek.
+
+    lru_cache je tu bezpecna: vzorek ve vaultu je nemenny (obsahove
+    adresovany sha256), takze vysledek parsovani se nikdy nemeni. Bez cache
+    by kazde nacteni dashboardu parsovalo N x .msg.
+    """
+    sender = subject = ""
+    analysis = None
+    nested = vault_reader.list_nested_messages(sha256)
+    if nested:
+        try:
+            parsed = soc_mail.parse_msg(
+                vault_reader.extracted_path(sha256, nested[0]))
+            sender, subject = parsed.sender, parsed.subject
+            analysis = soc_mail.analyze(parsed.headers_text)
+        except (soc_mail.MailParseError, vault_reader.VaultError,
+                FileNotFoundError):
+            pass
+    if analysis is None:
+        try:
+            text = vault_reader.extracted_path(sha256, "headers.txt").read_text(
+                encoding="utf-8-sig", errors="replace")
+            analysis = soc_mail.analyze(text)
+        except (vault_reader.VaultError, FileNotFoundError, OSError):
+            pass
+    score = soc_mail.score_headers(analysis) if analysis else None
+    return {"sender": sender, "subject": subject, "is_report": bool(nested),
+            "points": score.points if score else None,
+            "band": score.band if score else None}
+
+
 @bp.get("/")
 @login_required
 def dashboard():
@@ -57,7 +92,16 @@ def dashboard():
         limit = config.DEFAULT_LIMIT
     limit = max(1, min(limit, config.MAX_LIMIT))
 
-    rows = [vault_reader.summarize(m) for m in vault_reader.iter_samples()[:limit]]
+    rows = []
+    for m in vault_reader.iter_samples()[:limit]:
+        row = vault_reader.summarize(m)
+        triage = _triage_summary(row["sha256"])
+        # radek ukazuje to podstatne: reportovanou zpravu; obal jen jako zaloha
+        row["real_sender"] = triage["sender"] or row["sender"]
+        row["real_subject"] = triage["subject"] or row["subject"]
+        row.update(is_report=triage["is_report"], points=triage["points"],
+                   band=triage["band"])
+        rows.append(row)
     event(bp_logger(), logging.INFO, "dashboard_view",
           subject_id=g.identity.subject_id, remote_ip=client_ip(), shown=len(rows))
     return render_template("dashboard.html", rows=rows, limit=limit)

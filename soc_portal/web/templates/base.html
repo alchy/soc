@@ -1,22 +1,28 @@
 <!doctype html>
-<html lang="cs">
+<html lang="en" data-bs-theme="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}SOC portal{% endblock %}</title>
+  {# Bootstrap je VENDOROVANY lokalne - zadne CDN: portal musi bezet i bez
+     internetu a CSP/hardening nepousti externi zdroje. #}
+  <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap.min.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
 {% if identity %}
-  <header class="top">
-    <div class="brand">SOC&nbsp;portal <small>triaz vzorku</small></div>
-    <div>
-      <span class="user">{{ identity.display_name }}</span>
-      <form method="post" action="{{ url_for('auth.logout') }}">
-        <button class="btn" type="submit">Odhlasit</button>
-      </form>
+  <nav class="navbar border-bottom mb-4 top">
+    <div class="container-xxl">
+      <span class="navbar-brand fw-semibold">SOC&nbsp;portal
+        <small class="text-secondary fw-normal ms-2">sample triage</small></span>
+      <div class="d-flex align-items-center gap-3">
+        <span class="text-secondary small">{{ identity.display_name }}</span>
+        <form method="post" action="{{ url_for('auth.logout') }}" class="m-0">
+          <button class="btn btn-outline-secondary btn-sm" type="submit">Sign out</button>
+        </form>
+      </div>
     </div>
-  </header>
+  </nav>
 {% endif %}
 {% block body %}{% endblock %}
 </body>

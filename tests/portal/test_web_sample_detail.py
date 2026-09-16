@@ -29,7 +29,8 @@ def test_detail_ukaze_reportovanou_zpravu(client):
     if sha is None:
         pytest.skip("vault nema vzorek s vnorenym .msg")
     html = client.get(f"/sample/{sha}").get_data(as_text=True)
-    assert "Reportovana zprava" in html
+    assert "Reported message" in html
+    assert "Header signals" in html
     assert f"/sample/{sha}/nested/0/body" in html
 
 

@@ -30,7 +30,7 @@ packages = ["soc_api", "soc_mail", "soc_portal", "soc_portal.auth", "soc_portal.
 
 # Sablony a staticky portalu nejsou Python - musi se do balicku pribalit rucne.
 [tool.setuptools.package-data]
-soc_portal = ["web/templates/*.html", "web/static/*"]
+soc_portal = ["web/templates/*.html", "web/static/*", "web/static/vendor/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

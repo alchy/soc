@@ -1,159 +1,132 @@
-/* soc-portal - strizlivy, citelny vzhled SOC konzole. Zadny framework, jeden
-   soubor. Tmave pozadi snizuje unavu pri dlouhe triazi, akcent jen na stavy. */
+/* soc-portal - custom vrstva NAD Bootstrapem (vendored, dark theme).
+   Bootstrap resi layout/komponenty; tady zije jen SOC-specificke:
+   semafor, signalni radky, rozbalovaci dashboard, sandbox iframe. */
 :root {
   --bg: #0f1419; --panel: #1a2029; --panel-2: #232b36; --line: #2d3744;
   --fg: #d8dee9; --muted: #8a97a8; --accent: #5aa7ff;
-  --ok: #4cc38a; --warn: #e0a34e; --bad: #e5637a; --pending: #6b7789;
+  /* jasnejsi semafor - stavove barvy maji byt videt na prvni pohled */
+  --ok: #2fd27d; --warn: #ffb224; --bad: #ff5d73; --pending: #7d8b9f;
   --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
 }
-* { box-sizing: border-box; }
-body {
-  margin: 0; background: var(--bg); color: var(--fg);
-  font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-}
-a { color: var(--accent); text-decoration: none; }
-a:hover { text-decoration: underline; }
+body { background: var(--bg); color: var(--fg); }
+.mono { font-family: var(--mono); }
+nav.top, .card { background: var(--panel); border-color: var(--line); }
+.card-h { font-size: 13px; color: var(--muted); text-transform: uppercase;
+          letter-spacing: .5px; margin-bottom: 12px; }
+.back { font-size: 13px; }
 
-header.top {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 12px 20px; background: var(--panel); border-bottom: 1px solid var(--line);
-}
-header.top .brand { font-weight: 600; letter-spacing: .3px; }
-header.top .brand small { color: var(--muted); font-weight: 400; margin-left: 8px; }
-header.top .user { color: var(--muted); font-size: 13px; }
-header.top form { display: inline; }
-.btn {
-  background: var(--panel-2); color: var(--fg); border: 1px solid var(--line);
-  border-radius: 6px; padding: 6px 12px; cursor: pointer; font-size: 13px;
-}
-.btn:hover { border-color: var(--accent); }
-main { max-width: 1200px; margin: 0 auto; padding: 20px; }
-
-/* login */
-.center { min-height: 100vh; display: grid; place-items: center; }
-.card {
-  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
-  padding: 28px; width: 340px;
-}
-.card h1 { margin: 0 0 4px; font-size: 18px; }
-.card p.sub { margin: 0 0 20px; color: var(--muted); font-size: 13px; }
-label { display: block; margin: 14px 0 6px; font-size: 13px; color: var(--muted); }
-input[type=text], input[type=password] {
-  width: 100%; padding: 9px 11px; background: var(--bg); color: var(--fg);
-  border: 1px solid var(--line); border-radius: 6px; font-size: 14px;
-}
-input:focus { outline: none; border-color: var(--accent); }
-button.primary {
-  width: 100%; margin-top: 20px; padding: 10px; background: var(--accent);
-  color: #06121f; border: 0; border-radius: 6px; font-weight: 600; cursor: pointer;
-}
-.banner { padding: 10px 12px; border-radius: 6px; font-size: 13px; margin-bottom: 4px; }
-.banner.error { background: rgba(229,99,122,.12); border: 1px solid var(--bad); color: #ffb3c0; }
-
-/* tabulka */
-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); }
-th { color: var(--muted); font-weight: 500; position: sticky; top: 0; background: var(--bg); }
-tr:hover td { background: var(--panel); }
-td.mono, .mono { font-family: var(--mono); }
-td.sha a { font-family: var(--mono); font-size: 12px; }
-.muted { color: var(--muted); }
-.trunc { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-/* dashboard - rozbalovaci radky (nativni <details>, zadny JS) */
-.samples { overflow: hidden; }
-.samples .head, .samples summary {
-  display: grid; grid-template-columns: 18px 180px minmax(160px, 1fr) minmax(200px, 1.6fr);
-  gap: 10px; align-items: center; padding: 9px 12px; font-size: 13px;
-}
-.samples .head {
-  color: var(--muted); font-weight: 500;
-  border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--bg);
-}
-.samples details.row { border-bottom: 1px solid var(--line); }
-.samples details.row:last-of-type { border-bottom: 0; }
-.samples summary { cursor: pointer; list-style: none; }
-.samples summary::-webkit-details-marker { display: none; }
-.samples summary:hover { background: var(--panel-2); }
-.samples summary > span { min-width: 0; }
-.samples .trunc { max-width: none; }
-.samples .chev { transition: transform .12s; }
-.samples .chev::before { content: "\25B8"; color: var(--muted); }  /* ▸ */
-.samples details[open] .chev { transform: rotate(90deg); }
-.samples details[open] summary { background: var(--panel-2); }
-.samples .more { padding: 10px 12px 14px 40px; background: var(--panel-2); border-top: 1px solid var(--line); }
-.samples .sha-full { font-size: 12px; }
-.samples .detail-link { display: inline-block; margin-top: 12px; }
-
-/* odznaky stavu */
-.badge {
-  display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11.5px;
-  border: 1px solid transparent; white-space: nowrap;
-}
+/* stavove odznaky (pass/fail, extrakce, analyza) */
+.badge { border: 1px solid transparent; border-radius: 999px; font-size: 11.5px;
+         font-weight: 500; padding: 2px 8px; background: transparent; white-space: nowrap; }
 .badge.ok { color: var(--ok); border-color: var(--ok); }
 .badge.warn { color: var(--warn); border-color: var(--warn); }
 .badge.bad { color: var(--bad); border-color: var(--bad); }
 .badge.pending { color: var(--pending); border-color: var(--pending); }
 
-/* detail */
-.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
-.panel h2 { margin: 0 0 12px; font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+/* kv dvojice */
 dl.kv { margin: 0; display: grid; grid-template-columns: 160px 1fr; gap: 6px 12px; }
-dl.kv dt { color: var(--muted); }
+dl.kv dt { color: var(--muted); font-weight: 400; }
 dl.kv dd { margin: 0; word-break: break-word; }
-pre.text { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 12px; overflow: auto; max-height: 320px; font-family: var(--mono); font-size: 12px; }
-iframe.body {
-  width: 100%; height: 480px; border: 1px solid var(--line); border-radius: 6px;
-  background: #fff;  /* mail je psan pro bily podklad; sandbox ho izoluje */
+dl.kv.facts { margin-top: 10px; }
+
+/* dashboard - rozbalovaci radky (nativni <details>, zadny JS).
+   Pozn.: trida .row-item, ne .row - .row je Bootstrap grid. */
+.samples { overflow: hidden; }
+.samples .head, .samples summary {
+  display: grid;
+  grid-template-columns: 18px 64px 180px minmax(140px, 1fr) minmax(200px, 1.7fr);
+  gap: 10px; align-items: center; padding: 9px 12px; font-size: 13px;
 }
-iframe.body.short { height: 220px; }  /* obal reportu - jen kontext, ne hlavni obsah */
-.boxlabel { margin: 14px 0 6px; font-size: 12.5px; color: var(--muted); font-weight: 500; }
-/* jednotny semafor detailu: notice = maly roundbox pro jeden signal/sdeleni */
+.samples .head { color: var(--muted); font-weight: 500;
+  border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--bg); }
+.samples details.row-item { border-bottom: 1px solid var(--line); }
+.samples details.row-item:last-of-type { border-bottom: 0; }
+.samples summary { cursor: pointer; list-style: none; }
+.samples summary::-webkit-details-marker { display: none; }
+.samples summary:hover { background: var(--panel-2); }
+.samples summary > span { min-width: 0; }
+.samples .trunc { max-width: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.samples .chev { transition: transform .12s; }
+.samples .chev::before { content: "\25B8"; color: var(--muted); }  /* ▸ */
+.samples details[open] .chev { transform: rotate(90deg); }
+.samples details[open] summary { background: var(--panel-2); }
+.samples .more { padding: 10px 12px 14px 40px; background: var(--panel-2);
+                 border-top: 1px solid var(--line); }
+.samples .sha-full { font-size: 12px; }
+.samples .detail-link { margin-top: 12px; }
+/* skore = primarni triazni signal: plny barevny chip, at pres 50 radku
+   cervena/zelena bije do oci uz z periferniho videni. Tmavy text na syte
+   vypln pro kontrast. */
+.samples .scorecell { font-family: var(--mono); font-weight: 800; font-size: 12.5px;
+  text-align: center; border-radius: 6px; padding: 3px 0; color: #10141a; }
+.scorecell.ok { background: var(--ok); }
+.scorecell.warn { background: var(--warn); }
+.scorecell.bad { background: var(--bad); }
+.scorecell.muted { background: transparent; color: var(--muted); border: 1px solid var(--line); }
+
+/* vizualni odliseni karet: zprava (modry prouzek) vs. signaly (oranzovy) */
+.card-message { border-left: 3px solid var(--accent); }
+.card-signals { border-left: 3px solid var(--warn); background: #1c222d; }
+
+/* male oznameni v roundboxu (varovani u obsahu apod.) */
 .notice { padding: 7px 11px; border-radius: 8px; font-size: 12.5px; margin: 6px 0;
           border: 1px solid var(--line); background: var(--panel-2); }
-.notice.ok   { background: rgba(76,195,138,.10); border-color: var(--ok);   color: #9fe0c0; }
-.notice.warn { background: rgba(224,163,78,.10); border-color: var(--warn); color: #f0c580; }
-.notice.bad  { background: rgba(229,99,122,.10); border-color: var(--bad);  color: #ffb3c0; }
-.notice.info { color: var(--muted); }
-.notice .pts { font-family: var(--mono); font-size: 11px; opacity: .8; margin-right: 4px; }
+.notice.warn { background: rgba(255,178,36,.10); border-color: var(--warn); color: #ffd27a; }
+.notice.bad { background: rgba(255,93,115,.10); border-color: var(--bad); color: #ffb3c0; }
 
+/* velky stitek se skore v nadpisu panelu */
 .scorechip { display: inline-block; margin-left: 10px; padding: 3px 12px; border-radius: 999px;
              font-size: 12px; font-weight: 600; letter-spacing: .3px; text-transform: uppercase;
              border: 1px solid; vertical-align: middle; }
-.scorechip.ok   { color: var(--ok);   border-color: var(--ok);   background: rgba(76,195,138,.10); }
-.scorechip.warn { color: var(--warn); border-color: var(--warn); background: rgba(224,163,78,.10); }
-.scorechip.bad  { color: var(--bad);  border-color: var(--bad);  background: rgba(229,99,122,.10); }
+.scorechip.ok { color: var(--ok); border-color: var(--ok); background: rgba(47,210,125,.10); }
+.scorechip.warn { color: var(--warn); border-color: var(--warn); background: rgba(255,178,36,.10); }
+.scorechip.bad { color: var(--bad); border-color: var(--bad); background: rgba(255,93,115,.10); }
 
-/* signalni radek: [SEVERITA][kategorie][popis][+body], barva = severita.
-   Cely box pres sirku, nefragmentovany - jeden radek = jeden signal. */
+/* signalni radek: SEVERITY | TYPE | comment | +pts - tri VIZUALNE ODDELENE
+   casti (syta barevna bunka, tmavsi bunka typu, volny komentar). */
 .sigrow { display: flex; align-items: stretch; gap: 0; margin: 6px 0;
           border: 1px solid var(--line); border-radius: 8px; overflow: hidden;
           background: var(--panel-2); font-size: 12.5px; }
-.sigrow .sev { flex: 0 0 86px; display: flex; align-items: center; justify-content: center;
-               font-size: 10.5px; font-weight: 700; letter-spacing: .6px; }
-.sigrow .what { flex: 0 0 120px; display: flex; align-items: center; padding: 8px 10px;
-                font-family: var(--mono); font-weight: 600; }
-.sigrow .desc { flex: 1; display: flex; align-items: center; padding: 8px 10px 8px 0; }
+.sigrow .sev { flex: 0 0 92px; display: flex; align-items: center; justify-content: center;
+               font-size: 11px; font-weight: 800; letter-spacing: .6px; color: #10141a; }
+.sigrow .what { flex: 0 0 130px; display: flex; align-items: center; padding: 8px 12px;
+                font-family: var(--mono); font-weight: 700; font-size: 12px;
+                background: rgba(255,255,255,.05);
+                border-left: 1px solid var(--line); border-right: 1px solid var(--line); }
+.sigrow .desc { flex: 1; display: flex; align-items: center; padding: 8px 12px; }
 .sigrow .pts { flex: 0 0 auto; display: flex; align-items: center; padding: 0 12px;
-               font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
-.sev-info     { border-color: #4a5666; } .sev-info .sev     { background: rgba(107,119,137,.30); color: #aab6c8; }
-.sev-low      { border-color: #8a8340; } .sev-low .sev      { background: rgba(217,195,74,.18);  color: #d9c34a; }
-.sev-medium   { border-color: var(--warn); } .sev-medium .sev   { background: rgba(224,163,78,.22);  color: var(--warn); }
-.sev-high     { border-color: var(--bad); }  .sev-high .sev     { background: rgba(229,99,122,.22);  color: var(--bad); }
-.sev-critical { border-color: #ff5470; }     .sev-critical .sev { background: #ff5470; color: #14060a; }
-.sev-ok       { border-color: var(--ok); }   .sev-ok .sev       { background: rgba(76,195,138,.20);  color: var(--ok); }
+               font-family: var(--mono); font-size: 11.5px; color: var(--muted);
+               border-left: 1px solid var(--line); }
+.sev-info     { border-color: #4da3ff; } .sev-info .sev     { background: #4da3ff; }
+.sev-low      { border-color: #ffd43b; } .sev-low .sev      { background: #ffd43b; }
+.sev-medium   { border-color: #ff922b; } .sev-medium .sev   { background: #ff922b; }
+.sev-high     { border-color: #ff5d73; } .sev-high .sev     { background: #ff5d73; }
+.sev-critical { border-color: #c9184a; } .sev-critical .sev { background: #c9184a; color: #ffffff; }
+.sev-ok       { border-color: #2fd27d; } .sev-ok .sev       { background: #2fd27d; }
 
-.authnote { font-size: 12px; margin: 2px 0 8px; }
+/* autentizace + cesta doruceni */
+.boxlabel { margin: 14px 0 6px; font-size: 12.5px; color: var(--muted); font-weight: 500; }
+.authnote { margin: 2px 0 8px; }
 .authline { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 4px 0; }
 .authline .authsrv { font-size: 11px; }
-dl.kv.facts { margin-top: 10px; }
+ol.hops { margin: 0; padding-left: 22px; font-size: 12.5px; }
+ol.hops li { padding: 3px 0; border-bottom: 1px solid var(--line); }
+ol.hops li:last-child { border-bottom: 0; }
 
 /* sbalitelne bloky (plny text hlavicek, plaintext telo) */
 details.fold { margin-top: 10px; }
 details.fold summary { cursor: pointer; font-size: 12.5px; color: var(--muted); }
 details.fold summary:hover { color: var(--fg); }
 details.fold[open] summary { margin-bottom: 6px; }
+
+/* obsah vzorku */
+pre.text { background: var(--bg); border: 1px solid var(--line); border-radius: 6px;
+           padding: 12px; overflow: auto; max-height: 320px;
+           font-family: var(--mono); font-size: 12px; }
+iframe.body {
+  width: 100%; height: 480px; border: 1px solid var(--line); border-radius: 6px;
+  background: #fff;  /* mail je psan pro bily podklad; sandbox ho izoluje */
+}
+iframe.body.short { height: 220px; }  /* obal reportu - jen kontext */
 ul.events { list-style: none; margin: 0; padding: 0; font-family: var(--mono); font-size: 12px; }
 ul.events li { padding: 4px 0; border-bottom: 1px solid var(--line); color: var(--muted); }
-.back { font-size: 13px; }

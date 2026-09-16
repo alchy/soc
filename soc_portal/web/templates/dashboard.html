@@ -5,7 +5,7 @@
   {% if status == 'extracted' %}<span class="badge ok">{{ status }}</span>
   {% elif status in ('bad_password', 'error') %}<span class="badge bad">{{ status }}</span>
   {% elif status %}<span class="badge warn">{{ status }}</span>
-  {% else %}<span class="muted">-</span>{% endif %}
+  {% else %}<span class="text-secondary">-</span>{% endif %}
 {%- endmacro %}
 
 {% macro analysis_badge(state) -%}
@@ -16,35 +16,44 @@
 {%- endmacro %}
 
 {% block body %}
-<main>
-  <p class="muted">Poslednich {{ rows|length }} vzorku (od nejnovejsiho). Klik na radek rozbali podrobnosti.</p>
-  <div class="panel samples" style="padding:0;">
+<main class="container-xxl">
+  <p class="text-secondary small">Last {{ rows|length }} samples (newest first).
+    The row shows the reported message itself; click a row for details.</p>
+  <div class="card samples p-0">
     <div class="head">
-      <span></span><span>Prijato</span><span>Odesilatel</span><span>Predmet</span>
+      <span></span><span>Score</span><span>Received</span><span>Sender</span><span>Subject</span>
     </div>
     {% for r in rows %}
-    <details class="row">
+    <details class="row-item">
       <summary>
         <span class="chev" aria-hidden="true"></span>
+        {% if r.points is not none %}
+        <span class="scorecell {{ {'ok': 'ok', 'info': 'warn', 'warn': 'warn', 'high': 'bad'}[r.band] }}">{{ r.points }}</span>
+        {% else %}<span class="scorecell muted">-</span>{% endif %}
         <span class="mono">{{ r.received_at }}</span>
-        <span class="trunc" title="{{ r.sender }}">{{ r.sender or '-' }}</span>
-        <span class="trunc" title="{{ r.subject }}">{{ r.subject or '-' }}</span>
+        <span class="trunc" title="{{ r.real_sender }}">{{ r.real_sender or '-' }}</span>
+        <span class="trunc" title="{{ r.real_subject }}">{{ r.real_subject or '-' }}
+          {%- if r.is_report %} <span class="badge pending" title="user report; row shows the attached message">report</span>{% endif %}</span>
       </summary>
       <div class="more">
         <dl class="kv">
-          <dt>Soubor</dt><dd>{{ r.filename or '-' }}</dd>
-          <dt>Velikost</dt><dd class="mono">{{ r.size | human_size }}</dd>
-          <dt>Extrakce</dt>
+          {% if r.is_report %}
+          <dt>Reported by</dt><dd>{{ r.sender or '-' }} — {{ r.subject or '-' }}</dd>
+          {% endif %}
+          <dt>File</dt><dd>{{ r.filename or '-' }}</dd>
+          <dt>Size</dt><dd class="mono">{{ r.size | human_size }}</dd>
+          <dt>Extraction</dt>
           <dd>{{ extraction_badge(r.extraction_status) }}
-              {% if r.encrypted %}<span class="badge warn" title="sifrovany archiv">enc</span>{% endif %}</dd>
-          <dt>Analyza</dt><dd>{{ analysis_badge(r.analysis_state) }}</dd>
+              {% if r.encrypted %}<span class="badge warn" title="encrypted archive">enc</span>{% endif %}</dd>
+          <dt>Analysis</dt><dd>{{ analysis_badge(r.analysis_state) }}</dd>
           <dt>sha256</dt><dd class="mono sha-full">{{ r.sha256 }}</dd>
         </dl>
-        <a class="btn detail-link" href="{{ url_for('samples.sample_detail', sha256=r.sha256) }}">Otevrit detail vzorku</a>
+        <a class="btn btn-outline-primary btn-sm detail-link"
+           href="{{ url_for('samples.sample_detail', sha256=r.sha256) }}">Open sample detail</a>
       </div>
     </details>
     {% else %}
-    <p class="muted" style="padding:20px; text-align:center; margin:0;">Zadne vzorky.</p>
+    <p class="text-secondary text-center p-4 m-0">No samples.</p>
     {% endfor %}
   </div>
 </main>
