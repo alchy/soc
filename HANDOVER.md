@@ -100,6 +100,29 @@ punycode/IDN, header injection (duplicitní From/Subject/Date), hromadný mailer
 cloud `CAT:`, DMARC `p=none`, riziko příloh podle jména (exec/dvojitá přípona/SVG/
 makro/archiv), olevba makra.
 
+### Roadmapa komponent (co postupně přidávat)
+
+Živý zásobník s prioritami, rozdělením a odůvodněním je v
+**`docs/portal/header-analysis.md`** (fáze A = static/offline, fáze B = online).
+Zkráceně, v pořadí:
+
+- **Levná rozšíření knihovny (pořád static/offline):** profil hromadné pošty
+  (`List-Unsubscribe`/`List-Id`/`Precedence: bulk`/`Feedback-ID` — **protijed na
+  falešné poplachy**, pozná newsletter a zmírní signály; **nejvyšší priorita**),
+  From == To (spam „sám sobě"), HELO vs PTR nesoulad na origin hopu, slabý DKIM
+  podpis (`h=` bez `From`/`Subject`, `rsa-sha1`, expirace `x=`).
+- **Těžká obsahová analýza (orchestrátor, off-the-shelf, ne v portálu):** olevba
+  makra **HOTOVO**; **ClamAV** (signaturní AV, démon + DB + `freshclam`), **YARA**
+  (podmíněně — hodnota stojí a padá s čerstvostí pravidel; komunitní sada zastaralá).
+- **Fáze B — online obohacení (až po odsouhlasení A, v orchestrátoru, s cache):**
+  DNS + RDAP (bez klíčů — stáří/reputace domény, PTR), AbuseIPDB, VirusTotal,
+  abuse.ch URLhaus/ThreatFox, ip-api/ipinfo (geo+ASN), DNSBL (Spamhaus).
+- **Prezentační artefakty:** defangované tělo + PDF náhled (`pdftoppm`) → `body`/`preview` bloky.
+
+Pořadí priorit: profil hromadné pošty → From==To / HELO-PTR / slabý DKIM →
+ClamAV → YARA → fáze B. Každá nová věc = nový detektor/komponenta (+ případně
+nový typ bloku), nic víc — viz §4.
+
 ## 5. Orchestrátor (`soc_orchestrator/`) — POSTAVENO, NENASAZENO
 
 Trigger = **`manifest.analysis.state`** (soc_api ho při příjmu nastaví na `pending`,
@@ -142,6 +165,11 @@ Běží: soc-api, soc-portal, access-manager. **Orchestrátor NEBĚŽÍ** (jen k
    `analysis.json` a vrátit jako JSON. soc_api NIC nepočítá, jen servíruje.
 4. **Deploy orchestrátoru** — chybí run wrapper + install skript + systemd unit
    (`Restart=always`) + RW mount vaultu (`:z`, jako soc-api). Vyžaduje sudo (systemd).
+   **MUSÍ splnit CONTAINER-RULEZ** (viz §9): run wrapper `/usr/local/bin/soc-orchestrator-container`
+   (unit ho volá s `--foreground`), hardening (`cap-drop ALL`, `no-new-privileges`,
+   `--read-only`+tmpfs), publish nic (není web), JSON log s `<s>` v názvu, secrets
+   jménem, install skript `install-container-soc-orchestrator.sh`. Použij skeletony
+   z CONTAINER-RULEZ a zrcadli `deploy/soc-portal-container` / `container-run-soc-api.sh`.
 
 ## 8. Build / test / provoz
 
@@ -159,8 +187,19 @@ Běží: soc-api, soc-portal, access-manager. **Orchestrátor NEBĚŽÍ** (jen k
 
 ## 9. Gotchas & konvence
 
-- **CONTAINER-RULEZ.md** (kořen repa) = normativní standard pro všechny rootless-podman
-  služby. Každý deploy/build/install/entrypoint skript nese `<s>` VŽDY.
+- **CONTAINER-RULEZ.md** (kořen repa) = **normativní, checkovatelná politika** pro
+  VŠECHNY rootless-podman služby na hostu — každý deploy MUSÍ být v souladu. Rozdělená
+  do skupin pravidel **IMG** (obraz) · **BLD** (build) · **RUN** (běh — vše v run
+  wrapperu, unit jen volá `--foreground`) · **NET** (síť) · **PXY** (nginx propagace) ·
+  **LOG** (JSON log v `$HOME/logs/<s>.log`) · **SVC** (systemd unit, mode 644) ·
+  **CFG** (config + secrets jménem, ne na cmdline) · **HST** (install skript) · **SEL**
+  (SELinux label). Každé pravidlo má _Ověření_ (jak zkontrolovat) — dá se auditovat
+  druhým agentem. Klíčová pravidla: `cap-drop ALL` + `no-new-privileges` + `--read-only`,
+  publish jen na `127.0.0.1`, **názvy všech skriptů nesou `<s>` VŽDY** (i v jedno-službovém
+  repu): `container-build-<s>.sh`, `container-run-<s>.sh`, `install-container-<s>.sh`,
+  `entrypoint-<s>.sh`. **soc-api i soc-portal jsou už konformní; orchestrátor se do
+  souladu MUSÍ dovést před nasazením** (build/entrypoint skripty hotové, chybí run
+  wrapper + install + unit — viz §7 bod 4).
 - **access-manager** klíč portálu je `k6` (k5 přestal platit 2026-09-16 → 401 →
   crash-loop → nginx 502). Secrets v `/etc/sysconfig/soc-portal-container` (mode 600,
   owner soc — Claude smí číst/psát). Unit auto-restart čte EnvironmentFile každý pokus
