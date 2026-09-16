@@ -1,0 +1,35 @@
+# soc-portal za nginx — přidat do STÁVAJÍCÍHO server bloku
+# soc.autumnpartials.com (vedle location /api pro soc-api).
+#
+# Portál běží na smyčce 127.0.0.1:8096 (soc-api je 8095).
+# Montujeme ho pod cestu /portal. Aplikace to zvládne díky X-Forwarded-Prefix
+# (Werkzeug ProxyFix x_prefix) — url_for pak generuje /portal/... odkazy.
+
+# /portal bez lomítka -> /portal/ (jinak by se relativní odkazy rozjely)
+location = /portal {
+    return 308 /portal/;
+}
+
+location /portal/ {
+    # POZOR: nepřidávej sem žádný `add_header` — zrušil bys tím dědičnost
+    # VŠECH bezpečnostních hlaviček ze server bloku (v nginxu je add_header
+    # all-or-nothing per location). Když nějakou potřebuješ, zopakuj je všechny.
+    #
+    # Trailing slash u proxy_pass ZBAVÍ požadavek prefixu /portal/ —
+    # aplikace uvnitř vidí /login, /, /sample/... a prefix si vrátí
+    # zpět z hlavičky X-Forwarded-Prefix při generování odkazů.
+    proxy_pass http://127.0.0.1:8096/;
+
+    proxy_http_version 1.1;
+    proxy_set_header Host              $host;
+    proxy_set_header X-Forwarded-Prefix /portal;
+    proxy_set_header X-Forwarded-For   $remote_addr;   # jeden důvěryhodný hop
+    proxy_set_header X-Forwarded-Proto $scheme;        # https -> Secure cookie
+
+    # Přílohy vzorků mohou být velké (desítky MB) — nezaškrtit je krátkým bufferem.
+    proxy_read_timeout 120s;
+    client_max_body_size 2m;   # portál nic velkého nepřijímá (jen login)
+}
+
+# POZNÁMKA: TLS, HSTS a http->https redirect řeš na úrovni server bloku stejně
+# jako pro /api. Portál sám žádné TLS neterminuje.

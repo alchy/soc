@@ -1,0 +1,35 @@
+# Obraz portalu. Stavi se z korene repozitare:
+#
+#     podman build -t soc-portal:latest -f Dockerfile.portal .
+#
+# V obrazu NENI vault ani konfigurace. Vault se montuje zvenci READ-ONLY -
+# portal do nej nikdy nezapise (a mount `:ro` to vynuti v jadre). Na rozdil od
+# soc-api tu neni pyzipper ani nic pro rozbalovani: portal jen cte hotovy vault.
+FROM python:3.12-slim
+
+# UID natvrdo: rootless podman mapuje hostitelskeho uzivatele na tohle cislo
+# pres --userns=keep-id:uid=1000,gid=1000. Stejne cislo jako soc-api, aby prava
+# na sdilenem vaultu sedela obema kontejnerum.
+RUN useradd --create-home --uid 1000 soc
+
+WORKDIR /app
+# Zamerne kopirujeme JEN portalovy balik (ne soc_api) - lehci obraz, mensi
+# plocha. Sablony a staticka lezi uvnitr soc_portal/web/, jdou s adresarem.
+COPY soc_portal ./soc_portal
+RUN pip install --no-cache-dir "flask>=3.0" "waitress>=3.0"
+
+# Obrazu setrit netreba: kazdy suid/sgid nastroj je zbran navic pro toho, kdo by
+# uvnitr dostal shell. `no-new-privileges` je uz zvednout nenecha; tohle je druha vrstva.
+RUN find / -xdev -perm /6000 -type f -exec chmod -s {} + 2>/dev/null || true
+
+COPY deploy/entrypoint-portal.sh /usr/local/bin/entrypoint-portal.sh
+RUN chmod +x /usr/local/bin/entrypoint-portal.sh
+
+USER soc
+EXPOSE 8096
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8096/healthz')"
+
+ENTRYPOINT ["/usr/local/bin/entrypoint-portal.sh"]
+CMD []

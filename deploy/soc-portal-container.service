@@ -1,0 +1,65 @@
+# soc-portal v kontejneru, rootless podman, start pri bootu.
+#
+# Bezi jako uzivatel `soc` (ne root), stejne jako soc-api - potrebuje linger a
+# delegovane subuid/subgid (zaridi install skript soc-api, sdili se).
+#
+# Port se publikuje na 127.0.0.1 - portal NENI dostupny zvenci. Pred nim stoji
+# nginx s TLS na routе /portal (viz deploy/nginx-portal.conf.example).
+#
+# Instalace:
+#     sudo cp deploy/soc-portal-container /usr/local/bin/soc-portal-container
+#     sudo chmod +x /usr/local/bin/soc-portal-container
+#     sudo cp deploy/soc-portal-container.service /etc/systemd/system/
+#     sudo cp deploy/soc-portal-container.env.example /etc/sysconfig/soc-portal-container
+#     sudoedit /etc/sysconfig/soc-portal-container      # doplnit klic + session secret
+#     sudo chmod 600 /etc/sysconfig/soc-portal-container
+#     systemctl daemon-reload && systemctl enable --now soc-portal-container
+
+[Unit]
+Description=soc-portal v kontejneru (podman, rootless; portal SOC tymu :8096)
+Documentation=https://github.com/alchy/soc
+Wants=network-online.target
+After=network-online.target
+
+# Portal overuje uzivatele u access-manageru. Bez nej se prihlaseni nezdari
+# (login vraci 502), ale portal muze nabehnout - proto Wants, ne Requires.
+Wants=access-manager-container.service
+After=access-manager-container.service
+
+# Uzivatelsky manager drzi /run/user/<uid> a sbernici, bez kterych rootless
+# podman nenastartuje.
+Requires=user@978.service
+After=user@978.service
+
+[Service]
+Type=simple
+User=soc
+Group=soc
+
+Environment=HOME=/www/soc
+Environment=XDG_RUNTIME_DIR=/run/user/978
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/978/bus
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+
+# POVINNY (bez `-`): portal drzi tajemstvi (klic k5, podpis session). Kdyz
+# soubor chybi, kontejner nema klic a stejne by spadl na config.validate() -
+# radeji ho nespoustet vubec. Sem patri i SOC_PORTAL_SERVICE_NAME.
+EnvironmentFile=/etc/sysconfig/soc-portal-container
+ExecStart=/usr/local/bin/soc-portal-container --foreground
+
+ExecStopPost=-/usr/bin/podman rm -f soc-portal
+
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+
+# NoNewPrivileges=yes tady BYT NESMI (stejny duvod jako u soc-api): rootless
+# podman zaklada user namespace pres /usr/bin/newuidmap, ktery potrebuje file
+# capability cap_setuid=ep - a tu NoNewPrivs rusi. Ochranu procesu sahajiciho
+# na malware zajistuje --cap-drop ALL + --security-opt no-new-privileges UVNITR
+# kontejneru (viz wrapper), plus RestrictSUIDSGID nize a nosuid,nodev,noexec na mountu.
+RestrictSUIDSGID=yes
+Delegate=yes
+
+[Install]
+WantedBy=multi-user.target

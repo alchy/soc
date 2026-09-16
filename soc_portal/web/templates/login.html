@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Prihlaseni - SOC portal{% endblock %}
+{% block body %}
+<div class="center">
+  <form class="card" method="post" action="{{ url_for('auth.login') }}">
+    <h1>SOC portal</h1>
+    <p class="sub">Prihlaseni analytika</p>
+
+    {% if error %}
+      <div class="banner error">{{ error }}</div>
+    {% endif %}
+
+    <label for="username">Uzivatel</label>
+    <input type="text" id="username" name="username" autocomplete="username"
+           autofocus required>
+
+    <label for="credential">{{ cred_label }}</label>
+    <input type="password" id="credential" name="credential"
+           autocomplete="one-time-code" inputmode="text" required
+           {% if retry_after %}disabled{% endif %}>
+
+    <button class="primary" type="submit"
+            {% if retry_after %}disabled{% endif %}>Prihlasit</button>
+  </form>
+</div>
+{% endblock %}

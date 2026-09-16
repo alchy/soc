@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - SOC portal{% endblock %}
+
+{% macro extraction_badge(status) -%}
+  {% if status == 'extracted' %}<span class="badge ok">{{ status }}</span>
+  {% elif status in ('bad_password', 'error') %}<span class="badge bad">{{ status }}</span>
+  {% elif status %}<span class="badge warn">{{ status }}</span>
+  {% else %}<span class="muted">-</span>{% endif %}
+{%- endmacro %}
+
+{% macro analysis_badge(state) -%}
+  {% if state == 'done' %}<span class="badge ok">{{ state }}</span>
+  {% elif state == 'error' %}<span class="badge bad">{{ state }}</span>
+  {% elif state == 'running' %}<span class="badge warn">{{ state }}</span>
+  {% else %}<span class="badge pending">{{ state }}</span>{% endif %}
+{%- endmacro %}
+
+{% block body %}
+<main>
+  <p class="muted">Poslednich {{ rows|length }} vzorku (od nejnovejsiho).</p>
+  <div class="panel" style="padding:0; overflow:auto;">
+    <table>
+      <thead>
+        <tr>
+          <th>Prijato</th><th>Odesilatel</th><th>Predmet</th>
+          <th>Soubor</th><th>Velikost</th><th>Extrakce</th><th>Analyza</th><th>sha256</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td class="mono">{{ r.received_at }}</td>
+          <td class="trunc" title="{{ r.sender }}">{{ r.sender or '-' }}</td>
+          <td class="trunc" title="{{ r.subject }}">{{ r.subject or '-' }}</td>
+          <td class="trunc" title="{{ r.filename }}">{{ r.filename or '-' }}</td>
+          <td class="mono">{{ r.size | human_size }}</td>
+          <td>{{ extraction_badge(r.extraction_status) }}
+              {% if r.encrypted %}<span class="badge warn" title="sifrovany archiv">enc</span>{% endif %}</td>
+          <td>{{ analysis_badge(r.analysis_state) }}</td>
+          <td class="sha"><a href="{{ url_for('samples.sample_detail', sha256=r.sha256) }}">{{ r.sha256[:12] }}…</a></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="8" class="muted" style="padding:20px; text-align:center;">Zadne vzorky.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</main>
+{% endblock %}

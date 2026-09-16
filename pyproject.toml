@@ -19,7 +19,16 @@ build-backend = "setuptools.build_meta"
 # Dockerfile kopiruje jen pyproject.toml a soc_api, kontejner se postavi
 # i tak. Rozbita je proto jen ta nativni a vyvojarska cesta z README.
 [tool.setuptools]
-packages = ["soc_api"]
+# Monorepo: dve nasazovatelne komponenty v jednom repozitari.
+#   soc_api    - prijem vzorku (RW vault),  bezi na :8095, routa /api
+#   soc_portal - portal SOC tymu (RO vault), bezi na :8096, routa /portal
+# Bezi jako oddelene procesy/kontejnery; sdili jen obsah vaultu (soc_api pise,
+# soc_portal cte). flask+waitress jsou spolecne zavislosti, portal zadnou navic.
+packages = ["soc_api", "soc_portal", "soc_portal.auth", "soc_portal.web"]
+
+# Sablony a staticky portalu nejsou Python - musi se do balicku pribalit rucne.
+[tool.setuptools.package-data]
+soc_portal = ["web/templates/*.html", "web/static/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

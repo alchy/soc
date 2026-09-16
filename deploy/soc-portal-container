@@ -1,0 +1,123 @@
+#!/bin/sh
+# Spusti PORTAL v kontejneru (rootless podman). Mirror deploy/container-run.sh
+# (soc-api), s portalovymi rozdily: READ-ONLY vault, port 8096, zadny logovy
+# mount navic, secrets se predavaji JMENEM (nejsou videt v `ps`).
+#
+# Instaluje se do /usr/local/bin/soc-portal-container; systemd unit ho vola
+# s `--foreground`, takze se rucni spusteni a provoz nemohou rozejit.
+#
+#     deploy/soc-portal-container --help
+set -eu
+
+IMAGE="${SOC_PORTAL_IMAGE:-localhost/soc-portal:latest}"
+NAME="${SOC_PORTAL_NAME:-soc-portal}"
+DOMOV="${HOME:-/www/soc}"
+VAULT="${SOC_PORTAL_VAULT_HOST:-$DOMOV/vault}"
+PORT="${SOC_PORTAL_PORT:-8096}"
+BIND="${SOC_PORTAL_BIND:-127.0.0.1}"
+
+# Jak kontejner vidi smycku hostitele (kde bezi access-manager). Link-local,
+# stejny princip jako soc-api - nekoliduje a nezavisi na siti hostitele.
+HOST_ADDR="${SOC_PORTAL_HOST_ADDR:-169.254.1.2}"
+AM_PORT="${SOC_PORTAL_AM_PORT:-22000}"
+AM_REALM="${SOC_PORTAL_REALM:-soc.autumnpartials.com}"
+
+# Origin, ktery portal posle AM v X-Forwarded-For (pro origin ACL klice k5).
+# Pasta preklada spojeni z kontejneru na adresu hostitele na vychozim rozhrani;
+# tu zjistujeme za behu (napevno by se pri zmene IP tise rozesla se skutecnosti).
+# MUSI byt v ACL klice - jinak AM vraci 403 forbidden.
+IP_BIN=$(command -v ip || echo /sbin/ip)
+HOST_SRC=$("$IP_BIN" route get 1.1.1.1 2>/dev/null | sed -n 's/.* src \([0-9.]*\).*/\1/p' | head -1)
+CALL_ORIGIN="${SOC_PORTAL_AM_CALL_ORIGIN:-${HOST_SRC:-127.0.0.1}}"
+
+CGROUP_MANAGER="${SOC_PORTAL_CGROUP_MANAGER:-cgroupfs}"
+FOREGROUND=0
+
+napoveda() {
+    cat <<'NAPOVEDA'
+Pouziti: soc-portal-container [prepinace]
+
+  --image TAG        obraz (SOC_PORTAL_IMAGE)              [localhost/soc-portal:latest]
+  --name JMENO       jmeno kontejneru (SOC_PORTAL_NAME)    [soc-portal]
+  --vault CESTA      vault na hostiteli (SOC_PORTAL_VAULT_HOST) [$HOME/vault]  (montuje se RO)
+  --port PORT        port na hostiteli (SOC_PORTAL_PORT)   [8096]
+  --bind ADRESA      na co publikovat (SOC_PORTAL_BIND)    [127.0.0.1]
+  --host-addr ADRESA jak kontejner vidi smycku hostitele  [169.254.1.2]
+  --am-port PORT     port access-manageru                 [22000]
+  --foreground       nedemonizovat (pro systemd)
+  --help
+
+Secrets (SOC_PORTAL_AM_KEY, SOC_PORTAL_SESSION_SECRET) se berou z prostredi
+(EnvironmentFile /etc/sysconfig/soc-portal-container) a predavaji do kontejneru
+JMENEM - neobjevi se na prikazove radce.
+NAPOVEDA
+}
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --image) IMAGE="$2"; shift 2 ;;
+        --name) NAME="$2"; shift 2 ;;
+        --vault) VAULT="$2"; shift 2 ;;
+        --port) PORT="$2"; shift 2 ;;
+        --bind) BIND="$2"; shift 2 ;;
+        --host-addr) HOST_ADDR="$2"; shift 2 ;;
+        --am-port) AM_PORT="$2"; shift 2 ;;
+        --foreground) FOREGROUND=1; shift ;;
+        --help|-h) napoveda; exit 0 ;;
+        *) echo "neznamy prepinac: $1" >&2; napoveda >&2; exit 2 ;;
+    esac
+done
+
+[ -d "$VAULT" ] || { echo "vault neexistuje: $VAULT" >&2; exit 1; }
+
+# Fail-fast na chybejici secrets - lepsi nez nastartovat rozbity kontejner,
+# ktery stejne spadne na config.validate().
+[ -n "${SOC_PORTAL_AM_KEY:-}" ] || { echo "chybi SOC_PORTAL_AM_KEY (EnvironmentFile)" >&2; exit 1; }
+[ -n "${SOC_PORTAL_SESSION_SECRET:-}" ] || { echo "chybi SOC_PORTAL_SESSION_SECRET (EnvironmentFile)" >&2; exit 1; }
+
+# Zbytek po predchozim behu (--rm uklidi po sobe, ne po padu stroje).
+podman --cgroup-manager "$CGROUP_MANAGER" rm -f "$NAME" >/dev/null 2>&1 || true
+
+set -- \
+    --rm \
+    --init \
+    --name "$NAME" \
+    --network "pasta:--map-host-loopback,$HOST_ADDR" \
+    --publish "$BIND:$PORT:8096" \
+    --userns "keep-id:uid=1000,gid=1000" \
+    --volume "$VAULT:/vault:ro,z,nosuid,nodev,noexec" \
+    --env "SOC_PORTAL_AUTH_BACKEND=access_manager" \
+    --env "SOC_PORTAL_AM_URL=http://$HOST_ADDR:$AM_PORT" \
+    --env "SOC_PORTAL_AM_CALL_ORIGIN=$CALL_ORIGIN" \
+    --env "SOC_PORTAL_REALM=$AM_REALM" \
+    --env "SOC_PORTAL_VAULT=/vault" \
+    --env "SOC_PORTAL_BIND_HOST=0.0.0.0" \
+    --env "SOC_PORTAL_BIND_PORT=8096" \
+    --env "SOC_PORTAL_SESSION_SECURE=1" \
+    --env "SOC_PORTAL_AM_KEY" \
+    --env "SOC_PORTAL_SESSION_SECRET" \
+    --env "SOC_PORTAL_SERVICE_NAME" \
+    --env "SOC_PORTAL_REQUIRED_GROUP" \
+    --env "SOC_PORTAL_SESSION_ABS_TTL_S" \
+    --env "SOC_PORTAL_SESSION_IDLE_S" \
+    --log-driver k8s-file \
+    --log-opt "path=${SOC_PORTAL_LOG:-$DOMOV/logs}/soc-portal.log" \
+    --log-opt max-size=10m \
+    --stop-timeout 15
+
+# Portal cizi malware NErozbaluje, ale vault s nim CTE. Vsechno zbytne pryc:
+# zadne schopnosti, zadne zvyseni opravneni, koren jen pro cteni. `nosuid,nodev,
+# noexec` na mountu drzi malware ve vaultu neaktivni; `:ro` navic brani zapisu.
+#
+# SELinux: `z` (male, SDILENY label) je NUTNE, aby portal precetl vault sdileny
+# se soc-api. soc-api dnes pouziva `Z` (velke, privatni) - sjednot ho take na `z`,
+# jinak portal dostane "permission denied" i s ':ro'.
+set -- "$@" \
+    --cap-drop ALL \
+    --security-opt no-new-privileges \
+    --read-only \
+    --tmpfs /tmp:rw,noexec,nosuid,size=32m
+
+[ "$FOREGROUND" -eq 1 ] || set -- "$@" --detach
+
+exec podman --cgroup-manager "$CGROUP_MANAGER" run "$@" "$IMAGE"

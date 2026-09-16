@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Vzorek {{ sha256[:12] }} - SOC portal{% endblock %}
+{% block body %}
+<main>
+  <p class="back"><a href="{{ url_for('samples.dashboard') }}">← zpet na dashboard</a></p>
+
+  <div class="grid2">
+    <div class="panel">
+      <h2>E-mail</h2>
+      <dl class="kv">
+        <dt>Odesilatel</dt><dd>{{ metadata.SenderName or '-' }}
+            {% if metadata.SenderEmail %}<span class="mono muted">&lt;{{ metadata.SenderEmail }}&gt;</span>{% endif %}</dd>
+        <dt>Predmet</dt><dd>{{ metadata.Subject or '-' }}</dd>
+        <dt>Prijato</dt><dd class="mono">{{ summary.received_at }}</dd>
+      </dl>
+    </div>
+    <div class="panel">
+      <h2>Vzorek</h2>
+      <dl class="kv">
+        <dt>Soubor</dt><dd class="mono">{{ summary.filename }}</dd>
+        <dt>Velikost</dt><dd class="mono">{{ summary.size | human_size }}</dd>
+        <dt>Stav</dt><dd class="mono">{{ summary.state }} / extrakce: {{ summary.extraction_status }}
+            {% if summary.encrypted %}(sifrovano){% endif %}</dd>
+        <dt>Analyza</dt><dd class="mono">{{ summary.analysis_state }}</dd>
+        <dt>sha256</dt><dd class="mono" style="font-size:11px; word-break:break-all;">{{ sha256 }}</dd>
+      </dl>
+    </div>
+  </div>
+
+  {% if headers_text %}
+  <div class="panel">
+    <h2>Hlavicky</h2>
+    <pre class="text">{{ headers_text }}</pre>
+  </div>
+  {% endif %}
+
+  {% if has_body %}
+  <div class="panel">
+    <h2>HTML telo</h2>
+    <div class="warnbar">⚠ Telo pochazi z nepratelskeho vzorku. Zobrazuje se izolovane
+      (sandbox + CSP): skripty a nacitani obrazku jsou zakazany.</div>
+    <iframe class="body" sandbox
+            referrerpolicy="no-referrer"
+            src="{{ url_for('samples.sample_body', sha256=sha256) }}"
+            title="HTML telo e-mailu (izolovane)"></iframe>
+  </div>
+  {% endif %}
+
+  <div class="grid2">
+    <div class="panel">
+      <h2>Rozbalene soubory</h2>
+      {% if files %}
+      <table>
+        <thead><tr><th>Soubor</th><th>Velikost</th><th></th></tr></thead>
+        <tbody>
+          {% for f in files %}
+          <tr>
+            <td class="mono">{{ f.path }}</td>
+            <td class="mono">{{ f.size | human_size }}</td>
+            <td><a href="{{ url_for('samples.sample_file', sha256=sha256, relpath=f.path) }}">stahnout</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<p class="muted">Zadne rozbalene soubory.</p>{% endif %}
+    </div>
+
+    <div class="panel">
+      <h2>Udalosti</h2>
+      <ul class="events">
+        {% for e in events %}
+        <li>{{ e.t or '' }} · {{ e.event or e.malformed or e|tojson }}</li>
+        {% else %}
+        <li>Zadne udalosti.</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+</main>
+{% endblock %}
