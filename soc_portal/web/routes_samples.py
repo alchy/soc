@@ -202,21 +202,38 @@ def _hostile_html_response(html: str) -> Response:
     })
 
 
+def _macro_findings(sha256: str, rel: str) -> list:
+    """Makro-analyza Office priloh vnorene zpravy (soc_mail.macros). Otevre
+    .msg jednou, vytahne jen Office bajty. Muze vyhodit - volajici to izoluje."""
+    out = []
+    for name, data in soc_mail.office_attachments(
+            vault_reader.extracted_path(sha256, rel)):
+        out.extend(soc_mail.analyze_macros(name, data))
+    return out
+
+
 def _parse_nested(sha256: str) -> list[dict]:
     """Rozparsuje vnorene .msg prilohy pro detail. Chybu parsovani NEshazuje -
     analytik musi videt aspon to, ze priloha existuje a ze je necitelna."""
     out = []
     for idx, rel in enumerate(vault_reader.list_nested_messages(sha256)):
         item = {"idx": idx, "path": rel, "msg": None, "body_text": "",
-                "analysis": None, "score": None}
+                "analysis": None, "score": None, "failures": []}
         try:
             parsed = soc_mail.parse_msg(vault_reader.extracted_path(sha256, rel))
             item["msg"] = parsed
             item["body_text"] = soc_mail.defang_text(parsed.body_text)
-            item["analysis"] = soc_mail.analyze(parsed.headers_text)
+            item["analysis"] = analysis = soc_mail.analyze(parsed.headers_text)
+            # Prilohy + makra jako IZOLOVANE komponenty: pad makro-analyzy
+            # (chybny dokument, chybejici oletools) se ohlasi, nezhrouti detail.
+            att_findings, comp_failures = soc_mail.run_components([
+                ("attachments",
+                 lambda p=parsed: soc_mail.analyze_attachments(p.attachments)),
+                ("macros", lambda r=rel: _macro_findings(sha256, r)),
+            ])
             item["score"] = soc_mail.score_headers(
-                item["analysis"],
-                extra_findings=soc_mail.analyze_attachments(parsed.attachments))
+                analysis, extra_findings=att_findings)
+            item["failures"] = list(analysis.failures) + comp_failures
         except (soc_mail.MailParseError, vault_reader.VaultError,
                 FileNotFoundError) as e:
             event(bp_logger(), logging.WARNING, "nested_msg_parse_failed",

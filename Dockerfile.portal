@@ -17,7 +17,11 @@ WORKDIR /app
 # lehci obraz, mensi plocha. Sablony a staticka lezi uvnitr soc_portal/web/.
 COPY soc_portal ./soc_portal
 COPY soc_mail ./soc_mail
-RUN pip install --no-cache-dir "flask>=3.0" "waitress>=3.0" "extract-msg>=0.50"
+# extract-msg = jadro (cteni .msg); tranzitivne uz tahne oletools (pres RTFDE),
+# ktery pouziva soc_mail.macros (olevba). Uvadime oletools i explicitne - zamer
+# a pin verze. Portal makro-komponentu spousti on-demand v detailu vzorku.
+RUN pip install --no-cache-dir "flask>=3.0" "waitress>=3.0" \
+    "extract-msg>=0.50" "oletools>=0.60"
 
 # Obrazu setrit netreba: kazdy suid/sgid nastroj je zbran navic pro toho, kdo by
 # uvnitr dostal shell. `no-new-privileges` je uz zvednout nenecha; tohle je druha vrstva.

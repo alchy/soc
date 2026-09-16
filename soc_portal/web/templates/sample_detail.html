@@ -14,6 +14,14 @@
   <span class="badge {{ cls }}">{{ label }}&nbsp;{{ v or '?' }}</span>
 {%- endmacro %}
 
+{% macro diagnostics(failures) -%}
+  {# selhane komponenty analyzy - analyza je castecna, ne "cisto" #}
+  {% for f in failures %}
+  <div class="notice info">⚙ Analyzer <span class="mono">{{ f.component }}</span> unavailable
+      — analysis is partial. <span class="text-secondary">{{ f.error }}</span></div>
+  {% endfor %}
+{%- endmacro %}
+
 {% macro score_chip(score) -%}
   {%- set cls = {'ok': 'ok', 'info': 'warn', 'warn': 'warn', 'high': 'bad'}[score.band] -%}
   <span class="scorechip {{ cls }}" title="sum of points for header signals; higher = more suspicious">
@@ -168,6 +176,7 @@
     <h2 class="card-h">Header signals{% if nested|length > 1 %} — message {{ loop.index }}{% endif %}
         {% if n.score %}{{ score_chip(n.score) }}{% endif %}</h2>
     {{ header_analysis(n.analysis, n.score) }}
+    {{ diagnostics(n.failures) }}
   </div></div>
   {% endif %}
   {% endfor %}
@@ -175,7 +184,8 @@
   {% if headers_text %}
   <div class="card mb-3"><div class="card-body">
     <h2 class="card-h">Headers{% if wrapper_score %} {{ score_chip(wrapper_score) }}{% endif %}</h2>
-    {% if wrapper_analysis %}{{ header_analysis(wrapper_analysis, wrapper_score) }}{% endif %}
+    {% if wrapper_analysis %}{{ header_analysis(wrapper_analysis, wrapper_score) }}
+    {{ diagnostics(wrapper_analysis.failures) }}{% endif %}
     <details class="fold">
       <summary>Full headers</summary>
       <pre class="text">{{ headers_text }}</pre>
