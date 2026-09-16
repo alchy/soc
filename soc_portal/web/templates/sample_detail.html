@@ -61,6 +61,7 @@
     {% endfor %}
     <dl class="kv facts">
       <dt>From</dt><dd class="mono">{{ a.from_display }} &lt;{{ a.from_addr }}&gt;</dd>
+      {% if a.sender %}<dt>Sender</dt><dd class="mono">{{ a.sender }}</dd>{% endif %}
       {% if a.to %}<dt>To</dt><dd class="mono">{{ a.to }}</dd>{% endif %}
       {% if a.reply_to %}<dt>Reply-To</dt><dd class="mono">{{ a.reply_to }}</dd>{% endif %}
       {% if a.return_path %}<dt>Return-Path</dt><dd class="mono">{{ a.return_path }}</dd>{% endif %}

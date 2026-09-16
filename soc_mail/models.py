@@ -35,6 +35,7 @@ class MailContext:
     from_display: str
     from_addr: str
     from_domain: str
+    sender: str                     # Sender: (skutecny odesilatel, kdyz != From)
     reply_to: str
     return_path: str
     message_id: str

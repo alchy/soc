@@ -17,6 +17,20 @@ odsouhlasení A**. Vybíráme postupně; tabulky jsou zásobník, ne závazek.
 | A6 | časová anomálie | `Date` vs časy v `Received` | zfalšované Date, podezřelé zpoždění | **hotovo** (rozdíl >6 h = NÍZKÁ) |
 | A7 | technika obsahu | `Content-Type`, `Content-Transfer-Encoding` | base64 HTML bez plaintextu = typický spam vzor | **hotovo** (NÍZKÁ) |
 | A8 | skutečný příjemce | `To` | komu kampaň mířila | **hotovo** (fakta) |
+| A2+ | Sender ≠ From | `Sender:` | zprávu odeslala jiná doména než autor (kompromitovaný host) | **hotovo** (NÍZKÁ) |
+| A2+ | punycode/IDN | doména `From:` | homoglyf značky (`xn--`) | **hotovo** (STŘEDNÍ) |
+| A2+ | header injection | duplicitní `From`/`Subject`/`Date` | DKIM replay / injekce | **hotovo** (KRITICKÁ) |
+| A4+ | hromadný mailer | `X-Mailer` | PHPMailer/SwiftMailer/… místo klienta | **hotovo** (NÍZKÁ) |
+| A5+ | cloudová kategorie | `X-Forefront-Antispam-Report` `CAT:` | verdikt M365 (PHSH/MALW/SPM/BULK) | **hotovo** (dle CAT) |
+| — | DMARC politika | `dmarc=… (p=none)` z A-R | doména DMARC nevynucuje, i když „projde" | **hotovo** (INFO) |
+
+**Poučení z autentizovaného podvodu (report beranek@ans.cz):** BEC/fakturační
+podvod, kde útočník korektně autentizoval **vlastní throwaway doménu**
+(SPF/DKIM/DMARC pass) → samotná autentizace dává 0 = zelená. Statické netextové
+signály výše (Sender≠From, PHPMailer, p=none) ho zvednou na **žlutou (pozor)**.
+Limit statiky je poctivě žlutá, ne červená: jádro podvodu (značka v předmětu,
+žádost o změnu účtu) je **text** a plná jistota žádá **fázi B** (stáří/reputace
+domény). Cíl je splněn — přestane se to jevit jako bezpečné.
 
 ## B — online obohacení (free-tier; až po odsouhlasení A)
 

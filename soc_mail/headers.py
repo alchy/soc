@@ -5,9 +5,11 @@ doruceni, prijemce) a spusti nad nimi DETEKTORY signalu z `detectors.py`.
 Detekcni pravidla zamerne NEZIJI tady - kazde je mala funkce v registru
 `detectors.DETECTORS`, aby knihovna nerostla do jednoho velkeho `analyze()`.
 
-Pokryte signaly: A1 autentizace (SPF/DKIM/DMARC), A2 nesoulad identit,
-A3 cesta doruceni (received.py), A4 odesilaci software, A5 verdikty bran,
-A6 casova anomalie, A7 technika obsahu, A8 prijemce.
+Pokryte signaly: A1 autentizace (SPF/DKIM/DMARC), A2 nesoulad identit (vc.
+Sender != From, punycode/IDN, duplicitni hlavicky), A3 cesta doruceni
+(received.py), A4 odesilaci software (vc. hromadneho maileru), A5 verdikty
+bran (vc. cloudove kategorie CAT), A6 casova anomalie, A7 technika obsahu,
+A8 prijemce, plus DMARC politika p=none. Detaily kazdeho pravidla: detectors.py.
 
 Zadna sit, zadne API. Vstup je text hlavicek (RFC 5322) - stejny tvar ma
 headers.txt z vaultu i ParsedMessage.headers_text z .msg. Knihovna nic
@@ -58,6 +60,7 @@ class HeaderAnalysis:
     auth: tuple[AuthResult, ...]    # A1 - po jednom za kazdou AR hlavicku
     from_display: str               # A2 - fakta
     from_addr: str
+    sender: str                     # Sender: adresa ("" kdyz == From / chybi)
     reply_to: str
     return_path: str
     message_id: str
@@ -100,6 +103,7 @@ def analyze(headers_text: str) -> HeaderAnalysis:
     msg = message_from_string(headers_text or "")
 
     from_display, from_addr = parseaddr(str(msg.get("From", "")))
+    _, sender = parseaddr(str(msg.get("Sender", "")))
     _, reply_to = parseaddr(str(msg.get("Reply-To", "")))
     _, return_path = parseaddr(str(msg.get("Return-Path", "")))
     message_id = str(msg.get("Message-ID", "")).strip("<> \n")
@@ -108,7 +112,7 @@ def analyze(headers_text: str) -> HeaderAnalysis:
 
     ctx = MailContext(
         msg=msg, from_display=from_display, from_addr=from_addr,
-        from_domain=domain_of(from_addr), reply_to=reply_to,
+        from_domain=domain_of(from_addr), sender=sender, reply_to=reply_to,
         return_path=return_path, message_id=message_id, hops=hops)
 
     findings: list[Finding] = []
@@ -117,7 +121,7 @@ def analyze(headers_text: str) -> HeaderAnalysis:
 
     return HeaderAnalysis(
         auth=_auth_results(msg),
-        from_display=from_display, from_addr=from_addr,
+        from_display=from_display, from_addr=from_addr, sender=sender,
         reply_to=reply_to, return_path=return_path, message_id=message_id,
         mailer=mailer, hops=hops, to=str(msg.get("To", "")).strip(),
         findings=tuple(findings))

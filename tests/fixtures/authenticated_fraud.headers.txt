@@ -1,0 +1,18 @@
+Received: from mx.corp.example (mx.corp.example [10.0.0.1]) by cloud.protection.example with HTTPS; Tue, 15 Sep 2026 12:12:30 +0000
+Received: from server209.web-hosting.example (server209.web-hosting.example [198.54.116.213]) by listonos.corp.example with ESMTP; Tue, 15 Sep 2026 12:12:25 +0000
+Authentication-Results: spf=softfail (sender IP is 10.0.0.1) smtp.mailfrom=relay44.example; dkim=fail (body hash did not verify) header.d=relay44.example; dmarc=fail action=none header.from=relay44.example
+Authentication-Results-Original: listonos.corp.example; spf=pass smtp.mailfrom=agent@relay44.example; dkim=pass (signature verified) header.i=@relay44.example; dmarc=pass (p=none dis=none) d=relay44.example
+Received-SPF: Pass (listonos.corp.example: domain of agent@relay44.example designates 198.54.116.213 as permitted sender)
+From: Josef Agent <agent@relay44.example>
+Sender: <efineykw@server209.web-hosting.example>
+Return-Path: agent@relay44.example
+To: victim@corp.example
+Subject: Important: change of bank details
+Date: Tue, 15 Sep 2026 12:12:20 +0000
+Message-ID: <0gML4kY3fgHatC1nHHMZYRB5K8ktdTsawvjSfNDc6w@relay44.example>
+X-Mailer: PHPMailer 7.1.1 (https://github.com/PHPMailer/PHPMailer)
+X-Forefront-Antispam-Report: CIP:10.0.0.1;CTRY:CZ;SCL:-1;SFV:NSPM;CAT:NONE;PTR:hybrid.corp.example
+X-MS-Exchange-Organization-SCL: -1
+Content-Type: multipart/alternative; boundary="b1"
+Content-Transfer-Encoding: 8bit
+
