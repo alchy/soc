@@ -10,6 +10,13 @@ zdroju, ale NE navigaci ramu samotneho - klik na <a href> by obsah ramu
 presmeroval na server utocnika (= odchozi request z analytikova prohlizece).
 Proto se `href` odstranuje a cil se ukazuje jen jako defangovany text.
 
+HRANICE (nutne cist upromne): tohle NENI bezpecnostni hranice - tou je
+sandbox iframe + CSP `default-src 'none'` na serverovnem endpointu. Defang je
+vrstva navic pro CITELNOST a copy-paste. Pokryva bezne pripady (http/https
+odkazy v textu, atributech a <a href>), ale NE vsechny obchazky: URL rozsekana
+mezi HTML tagy, entitne/percent kodovane schema, `data:`/`mailto:`/`javascript:`
+apod. se nedefanguji. Spolehat na to jako na jedinou obranu je chyba.
+
 Knihovna vraci data, neresi HTTP ani sablony (viz soc_mail.__init__).
 """
 from __future__ import annotations

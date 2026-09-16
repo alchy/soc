@@ -11,12 +11,12 @@ odsouhlasení A**. Vybíráme postupně; tabulky jsou zásobník, ne závazek.
 |---|---|---|---|---|
 | A1 | verdikt autentizace SPF/DKIM/DMARC | `Authentication-Results(-Original)`, `Received-SPF` | nejsilnější indikátor spoofingu; badge pass/fail/none za každého ověřovatele | **hotovo** |
 | A2 | nesoulad identit | `From` vs `Reply-To` vs `Return-Path` vs doména `Message-ID`; adresa v display-name | klasika podvodů („OpenAI" nad cizí doménou, `reditel@banka.cz <x@evil.ru>`) | **hotovo** |
-| A3 | cesta doručení | řetěz `Received` odspodu | původní IP/hostname, vstupní bod do internetu, HELO vs PTR | zásobník |
+| A3 | cesta doručení | řetěz `Received` odspodu | původní IP/hostname, vstupní bod do internetu | **hotovo** (fakta — sbalený výpis hopů se sloučením duplicit; neskóruje se, spodek řetězu může být lživý) |
 | A4 | odesílací software | `X-Mailer`, `User-Agent`, `X-PHP-Originating-Script` | skript na hacknutém webu vs. legitimní klient | **hotovo** |
-| A5 | verdikty po cestě | `X-Spam-Flag/Status`, IronPort/Talos, MS `SCL`, `X-Forefront-Antispam-Report` | co si myslely brány na cestě — „second opinion" zdarma | zásobník |
-| A6 | časová anomálie | `Date` vs časy v `Received` | zfalšované Date, podezřelé zpoždění | zásobník |
-| A7 | technika obsahu | `Content-Type`, `charset`, `Content-Transfer-Encoding` | base64 HTML bez plaintextu = typický spam vzor | zásobník |
-| A8 | skutečný příjemce | `To`, `Delivered-To` | komu kampaň mířila | zásobník |
+| A5 | verdikty po cestě | `X-Spam-Flag/Status`, `X-ThreatScanner-Verdict`, MS `SCL` | co si myslely brány na cestě — „second opinion" zdarma | **hotovo** (spam flag = VYSOKÁ; SCL ≥5 STŘEDNÍ, ≥7 VYSOKÁ) |
+| A6 | časová anomálie | `Date` vs časy v `Received` | zfalšované Date, podezřelé zpoždění | **hotovo** (rozdíl >6 h = NÍZKÁ) |
+| A7 | technika obsahu | `Content-Type`, `Content-Transfer-Encoding` | base64 HTML bez plaintextu = typický spam vzor | **hotovo** (NÍZKÁ) |
+| A8 | skutečný příjemce | `To` | komu kampaň mířila | **hotovo** (fakta) |
 
 ## B — online obohacení (free-tier; až po odsouhlasení A)
 
@@ -29,6 +29,27 @@ odsouhlasení A**. Vybíráme postupně; tabulky jsou zásobník, ne závazek.
 | B5 | abuse.ch URLhaus/ThreatFox | URL proti blacklistu kampaní | zdarma, auth-key | známé kampaně |
 | B6 | ip-api.com / ipinfo.io | geolokace + ASN | 45/min bez klíče / 50k měs. | geografický nesmysl odesílatele |
 | B7 | DNSBL (Spamhaus zen…) | IP na blacklistu? | DNS zdarma, vlastní resolver | přes 8.8.8.8 nefunguje |
+
+## Kdo je pro SPF/DKIM/DMARC autoritativní
+
+Zpráva u nás projde víc ověřovateli (vstupní IronPort `listonos.ans.cz` →
+interní Exchange → hybrid → EOP/M365) a každý razítkuje vlastní
+`Authentication-Results`. Verdikty ale **nejsou rovnocenné**:
+
+- **SPF** ověřuje připojující se IP proti doméně z envelope MAIL FROM
+  (Return-Path). Skutečnou IP odesílatele viděla **jen vstupní brána** —
+  pozdější ověřovatelé (EOP za hybridem) už měří IP *naší vlastní*
+  infrastruktury a jejich SPF je artefakt. Proto se **nikdy neskóruje**.
+- **DKIM** je kryptografický podpis — primárně bereme vstupní bránu, verdikt
+  pozdějšího ověřovatele slouží jako označená záloha.
+- **DMARC** je DNS politika domény z `From:` — fakt zjistitelný odkudkoli;
+  u nás ho typicky razítkuje až EOP (IronPort dává `validskip`), proto je
+  záloha běžná a legitimní.
+
+Technicky: **autoritativní = `Authentication-Results-Original`** (verdikt
+vstupní brány zachovaný hybridem); bez něj nejspodnější AR hlavička (původu
+nejblíž). UI značí řádky „rozhodující" vs. „informativní"; skóre bere jen
+autoritativní (+ označený fallback pro DKIM/DMARC).
 
 ## Scoring (`soc_mail/scoring.py`)
 
@@ -51,10 +72,20 @@ aby pohled nebyl fragmentovaný.
 
 ## Architektura
 
-- Každá A-funkce = **komponenta knihovny `soc_mail`** (žádný monolit: `msg.py`
-  čtení, `defang.py` zneškodnění, `headers.py` hlavičky). Portál jen volá
-  a zobrazuje; knihovnu později beze změny převezme orchestrátor.
-- `headers.analyze()` vrací **fakta + nálezy** (`Finding(code, text)`), nic
-  neskóruje — vážení signálů je práce analytika (a jednou orchestrátoru).
+- Knihovna `soc_mail` je **víc malých komponent, ne monolit**: `models.py`
+  (sdílené typy), `msg.py` (čtení .msg), `defang.py` (zneškodnění), `received.py`
+  (cesta doručení), `headers.py` (parsování hlaviček + orchestrace), `detectors.py`
+  (registr detektorů signálů), `scoring.py`. Portál jen volá a zobrazuje;
+  knihovnu později beze změny převezme orchestrátor.
+- **Přidat signál = napsat funkci `(ctx) -> list[Finding]` a zapsat ji do
+  `detectors.DETECTORS`.** `headers.analyze()` se nemění — tím knihovna neroste
+  do jednoho velkého `analyze()`.
+- `headers.analyze()` vrací **fakta + nálezy** (`Finding`), nic neskóruje —
+  vážení signálů je práce analytika (a jednou orchestrátoru).
+- **Skóre je nekalibrovaná heuristika, ne měřená pravděpodobnost** (viz odstavec
+  výše): slouží k řazení a upozornění, ne jako verdikt; váhy se doladí, až budou
+  triažované vzorky. Signály se zobrazují seřazené podle síly (nejhorší nahoře).
+- **Defang není bezpečnostní hranice** — tou je sandbox iframe + CSP. Defang je
+  vrstva navíc pro čitelnost/copy-paste a nepokrývá všechny obcházky.
 - B poběží mimo vykreslení stránky (latence, limity, klíče) — jako samostatná
   akce s cache, pravděpodobně už v režii orchestrátoru.

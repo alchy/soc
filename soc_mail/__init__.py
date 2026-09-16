@@ -8,9 +8,11 @@ neutralni datovy model.
 from .defang import defang_html, defang_text
 from .headers import AuthResult, Finding, HeaderAnalysis, analyze
 from .msg import MailAttachment, MailParseError, ParsedMessage, parse_msg
+from .received import Hop, parse_chain
 from .scoring import Contribution, Score, score_headers
 
 __all__ = ["MailAttachment", "MailParseError", "ParsedMessage", "parse_msg",
            "defang_html", "defang_text",
            "AuthResult", "Finding", "HeaderAnalysis", "analyze",
+           "Hop", "parse_chain",
            "Contribution", "Score", "score_headers"]

@@ -1,21 +1,31 @@
-"""Offline vyteznost e-mailovych hlavicek (faze A, viz docs/portal/header-analysis.md).
+"""Offline analyza e-mailovych hlavicek (faze A, viz docs/portal/header-analysis.md).
 
-Zadna sit, zadne API - jen to, co je v hlavickach samotnych:
-  A1  verdikt autentizace (SPF / DKIM / DMARC z Authentication-Results*),
-  A2  nesoulad identit (From vs Reply-To vs Return-Path vs domena Message-ID,
-      adresa schovana v display-name),
-  A4  odesilaci software (X-Mailer / User-Agent / X-PHP-Originating-Script).
+Tenhle modul ROZPARSUJE hlavicky na fakta (odesilatel, autentizace, cesta
+doruceni, prijemce) a spusti nad nimi DETEKTORY signalu z `detectors.py`.
+Detekcni pravidla zamerne NEZIJI tady - kazde je mala funkce v registru
+`detectors.DETECTORS`, aby knihovna nerostla do jednoho velkeho `analyze()`.
 
-Vstup je text hlavicek (RFC 5322) - stejny tvar ma headers.txt z vaultu
-i ParsedMessage.headers_text z .msg. Vystup jsou fakta + nalezy; co je
-"podezrele" rozhoduje analytik, knihovna nic neskoruje.
+Pokryte signaly: A1 autentizace (SPF/DKIM/DMARC), A2 nesoulad identit,
+A3 cesta doruceni (received.py), A4 odesilaci software, A5 verdikty bran,
+A6 casova anomalie, A7 technika obsahu, A8 prijemce.
+
+Zadna sit, zadne API. Vstup je text hlavicek (RFC 5322) - stejny tvar ma
+headers.txt z vaultu i ParsedMessage.headers_text z .msg. Knihovna nic
+neskoruje (to dela scoring.py); vraci fakta + nalezy.
 """
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from email import message_from_string
 from email.utils import parseaddr
+
+from .detectors import DETECTORS
+from .models import Finding, MailContext, domain_of
+from .received import Hop, parse_chain
+
+# Finding se re-exportuje pro zpetnou kompatibilitu (soc_mail.headers.Finding).
+__all__ = ["AuthResult", "Finding", "HeaderAnalysis", "analyze"]
 
 _MECH_RE = re.compile(r"\b(spf|dkim|dmarc)\s*=\s*([A-Za-z]+)", re.IGNORECASE)
 
@@ -25,31 +35,22 @@ class AuthResult:
     """Verdikt jednoho overovatele.
 
     Kazda brana po ceste pridava VLASTNI Authentication-Results hlavicku,
-    proto jich zprava mivá vic. `original=True` znamena hlavicku
-    Authentication-Results-Original - verdikt prvni (vnitrni) brany,
-    zachovany pozdejsi branou pred prepsanim.
+    proto jich zprava miva vic. `original=True` znamena hlavicku
+    Authentication-Results-Original - verdikt VSTUPNI brany, zachovany
+    pozdejsi branou (hybridem) pred prepsanim.
+
+    `authoritative=True` oznacuje verdikt, ktery se smi pouzit pro skore:
+    SPF ma vypovidaci hodnotu JEN u brany, ktera videla skutecnou IP
+    z internetu - pozdejsi overovatele (napr. EOP za hybridem) uz vidi IP
+    naseho vlastniho serveru a jejich SPF je artefakt. Autoritativni jsou
+    proto -Original verdikty; bez nich nejspodnejsi (puvodu nejblizsi) AR.
     """
     server: str                     # kdo overoval (authserv-id; "" kdyz chybi)
     spf: str                        # pass/fail/softfail/none/permerror/... nebo ""
     dkim: str
     dmarc: str
     original: bool = False
-
-
-@dataclass(frozen=True)
-class Finding:
-    """Jeden nalez: strojovy kod + kategorie + text + sila SIGNALU.
-
-    `level` klasifikuje jednotlivy signal na petistupnove skale
-    'info' < 'low' < 'medium' < 'high' < 'critical' - to je domenova znalost
-    o hlavickach, ne verdikt o zprave. Vazeni vsech signalu dohromady zustava
-    na analytikovi (a scoringu/orchestratoru).
-    `title` je kratka kategorie pro UI (SPF, DKIM, PHP skript, ...).
-    """
-    code: str
-    title: str
-    text: str
-    level: str = "medium"           # info|low|medium|high|critical
+    authoritative: bool = False
 
 
 @dataclass(frozen=True)
@@ -61,11 +62,9 @@ class HeaderAnalysis:
     return_path: str
     message_id: str
     mailer: str                     # A4 - X-Mailer/User-Agent ("" kdyz chybi)
-    findings: tuple[Finding, ...]   # nesoulady a pozoruhodnosti
-
-
-def _domain(addr: str) -> str:
-    return addr.rsplit("@", 1)[1].lower() if "@" in addr else ""
+    hops: tuple[Hop, ...]           # A3 - cesta doruceni, puvod prvni
+    to: str                         # A8 - skutecny prijemce
+    findings: tuple[Finding, ...]   # nalezy z detectors.DETECTORS
 
 
 def _auth_results(msg) -> tuple[AuthResult, ...]:
@@ -84,6 +83,15 @@ def _auth_results(msg) -> tuple[AuthResult, ...]:
                 spf=mechs.get("spf", ""), dkim=mechs.get("dkim", ""),
                 dmarc=mechs.get("dmarc", ""),
                 original=name.endswith("-Original")))
+
+    # Autorita (viz docstring AuthResult): -Original verdikty vstupni brany;
+    # kdyz zadne nejsou, nejspodnejsi AR hlavicka (hlavicky se pridavaji
+    # nahoru, takze posledni v poradi je puvodu nejbliz).
+    if out:
+        if any(r.original for r in out):
+            out = [replace(r, authoritative=r.original) for r in out]
+        else:
+            out[-1] = replace(out[-1], authoritative=True)
     return tuple(out)
 
 
@@ -96,36 +104,20 @@ def analyze(headers_text: str) -> HeaderAnalysis:
     _, return_path = parseaddr(str(msg.get("Return-Path", "")))
     message_id = str(msg.get("Message-ID", "")).strip("<> \n")
     mailer = str(msg.get("X-Mailer", "") or msg.get("User-Agent", "")).strip()
-    php_script = str(msg.get("X-PHP-Originating-Script", "")).strip()
+    hops = parse_chain(msg.get_all("Received"))
+
+    ctx = MailContext(
+        msg=msg, from_display=from_display, from_addr=from_addr,
+        from_domain=domain_of(from_addr), reply_to=reply_to,
+        return_path=return_path, message_id=message_id, hops=hops)
 
     findings: list[Finding] = []
-    fd = _domain(from_addr)
-
-    if reply_to and fd and _domain(reply_to) != fd:
-        findings.append(Finding("reply_to_mismatch", "Reply-To",
-            f"odpovedi miri do jine domeny ({reply_to}) nez From ({from_addr})",
-            level="high"))
-    if return_path and fd and _domain(return_path) != fd:
-        findings.append(Finding("return_path_mismatch", "Return-Path",
-            f"bounce adresa ({return_path}) je z jine domeny nez From ({from_addr})",
-            level="medium"))
-    if message_id and fd and _domain(message_id) and _domain(message_id) != fd:
-        findings.append(Finding("msgid_mismatch", "Message-ID",
-            f"domena ID ({_domain(message_id)}) nesedi s From ({fd}); "
-            "u velkych provideru bezne", level="info"))
-    # Klasika: "ucetni@banka.cz <utocnik@evil.ru>" - adresa schovana ve jmene.
-    disp_addr = parseaddr(f"x <{from_display}>")[1] if "@" in from_display else ""
-    if disp_addr and _domain(disp_addr) != fd:
-        findings.append(Finding("display_impersonation", "Display-name",
-            f"jmeno odesilatele obsahuje adresu {from_display!r}, skutecny "
-            f"odesilatel je {from_addr} - pokus o impersonaci", level="critical"))
-    if php_script:
-        findings.append(Finding("php_script", "PHP skript",
-            f"odeslano skriptem {php_script} - typicky kompromitovany web",
-            level="high"))
+    for detector in DETECTORS:
+        findings.extend(detector(ctx))
 
     return HeaderAnalysis(
         auth=_auth_results(msg),
         from_display=from_display, from_addr=from_addr,
         reply_to=reply_to, return_path=return_path, message_id=message_id,
-        mailer=mailer, findings=tuple(findings))
+        mailer=mailer, hops=hops, to=str(msg.get("To", "")).strip(),
+        findings=tuple(findings))

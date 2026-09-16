@@ -1,7 +1,10 @@
-"""Testy knihovny soc_mail - parsovani .msg proti realnemu vzorku z vaultu.
+"""Testy knihovny soc_mail - .msg parsovani + defang.
 
-Vzorek se hleda za behu (vault je zivy); kdyz zadny report s vnorenym .msg
-neexistuje, testy parsovani se preskoci - defang testy bezi vzdy (bez I/O).
+Defang testy jsou HERMETICKE (jen retezce). Parsovani .msg potrebuje binarni
+OLE soubor - ten se do repa nekomituje: realny .msg nese skutecne interni
+adresy/hostnames (PII) a syntetizovat validni OLE by byl neumerny naklad.
+Proto je `test_parse_msg_realny_vzorek` INTEGRACNI: bezi jen kdyz je vault
+po ruce, jinak se preskoci.
 """
 from pathlib import Path
 

@@ -1,0 +1,18 @@
+Received: from gw.corp.example (gw.corp.example [10.0.0.1]) by mx.corp.example with ESMTP; Tue, 15 Sep 2026 15:28:05 +0000
+Received: from spammer.example (evilhost.example [203.0.113.9]) by gw.corp.example with ESMTP; Tue, 15 Sep 2026 15:27:00 +0000
+Authentication-Results: outer.corp.example; spf=pass
+Authentication-Results-Original: gw.corp.example; spf=softfail; dkim=fail; dmarc=none
+Received-SPF: SoftFail
+From: "billing@bank.example" <webmaster@spammer.example>
+Reply-To: collect@another.example
+Return-Path: bounce@relay.example
+To: victim@corp.example
+Message-ID: <20260915152700.qmail@spammer.example>
+Date: Mon, 14 Sep 2026 09:00:00 +0000
+X-PHP-Originating-Script: 10225:mdm.php
+X-Spam-Flag: YES
+X-Spam-Status: YES, hits=9 required=5
+X-MS-Exchange-Organization-SCL: 8
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: base64
+
