@@ -80,3 +80,30 @@ def _describe_attachment(att) -> MailAttachment:
     data = att.data
     size = len(data) if isinstance(data, (bytes, bytearray)) else 0
     return MailAttachment(name=str(name), size=size)
+
+
+# Pripony, u kterych ma smysl makro-analyza (soc_mail.macros).
+_OFFICE_EXT = (".doc", ".docx", ".docm", ".dot", ".dotm", ".xls", ".xlsx",
+               ".xlsm", ".xlsb", ".xlt", ".xltm", ".ppt", ".pptx", ".pptm",
+               ".rtf")
+
+
+def office_attachments(path) -> list[tuple[str, bytes]]:
+    """(jmeno, bajty) priloh, ktere jsou Office dokumenty - a JEN ty, at se
+    nenacitaji do pameti velke PDF/obrazky. Bajty pak jdou do makro-analyzy.
+    """
+    try:
+        msg = extract_msg.openMsg(str(path))
+    except Exception as e:
+        raise MailParseError(f"{path}: {e}") from e
+    out: list[tuple[str, bytes]] = []
+    try:
+        for a in msg.attachments:
+            name = str(a.longFilename or a.shortFilename or "")
+            if name.lower().endswith(_OFFICE_EXT):
+                data = a.data
+                if isinstance(data, (bytes, bytearray)):
+                    out.append((name, bytes(data)))
+    finally:
+        msg.close()
+    return out

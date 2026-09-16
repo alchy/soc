@@ -24,6 +24,8 @@ from email.utils import parseaddr
 
 from .detectors import DETECTORS
 from .models import Finding, MailContext, domain_of
+from .pipeline import ComponentFailure
+from .pipeline import run as run_components
 from .received import Hop, parse_chain
 
 # Finding se re-exportuje pro zpetnou kompatibilitu (soc_mail.headers.Finding).
@@ -68,6 +70,7 @@ class HeaderAnalysis:
     hops: tuple[Hop, ...]           # A3 - cesta doruceni, puvod prvni
     to: str                         # A8 - skutecny prijemce
     findings: tuple[Finding, ...]   # nalezy z detectors.DETECTORS
+    failures: tuple[ComponentFailure, ...] = ()  # detektory, ktere spadly
 
 
 def _auth_results(msg) -> tuple[AuthResult, ...]:
@@ -115,13 +118,13 @@ def analyze(headers_text: str) -> HeaderAnalysis:
         from_domain=domain_of(from_addr), sender=sender, reply_to=reply_to,
         return_path=return_path, message_id=message_id, hops=hops)
 
-    findings: list[Finding] = []
-    for detector in DETECTORS:
-        findings.extend(detector(ctx))
+    # Kazdy detektor izolovane: pad jednoho se ohlasi (failures), ostatni bezi.
+    findings, failures = run_components(
+        [(det.__name__, lambda d=det: d(ctx)) for det in DETECTORS])
 
     return HeaderAnalysis(
         auth=_auth_results(msg),
         from_display=from_display, from_addr=from_addr, sender=sender,
         reply_to=reply_to, return_path=return_path, message_id=message_id,
         mailer=mailer, hops=hops, to=str(msg.get("To", "")).strip(),
-        findings=tuple(findings))
+        findings=tuple(findings), failures=tuple(failures))

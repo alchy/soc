@@ -1,9 +1,57 @@
-# Vytěžnost hlaviček — plán a stav
+# Vytěžnost vzorku — plán a stav
 
-Co všechno jde pro analytika vytěžit z hlaviček zprávy. Fáze **A** = offline
-(jen obsah hlaviček, žádná síť) — implementuje `soc_mail/headers.py`. Fáze
-**B** = online obohacení přes free-tier API — **odloženo, začne až po
-odsouhlasení A**. Vybíráme postupně; tabulky jsou zásobník, ne závazek.
+Co všechno jde pro analytika vytěžit z hotového vzorku. Fáze **A** = vše
+**staticky/offline** (bez sítě, bez čtení textu těla): hlavičky, struktura
+příloh, forenzní sken obsahu příloh. Fáze **B** = online obohacení přes
+free-tier API — **odloženo, začne až po odsouhlasení A**. Vybíráme postupně;
+tabulky jsou zásobník, ne závazek.
+
+## Fáze A — přehled a roadmapa
+
+Tři vrstvy podle nákladu a **místa běhu**. Řídící pravidlo: *nepřátelský obsah
+se pitvá mimo analytikův portál* — čím dráž a nebezpečněji, tím dál od RO portálu.
+
+**Vrstva 1 — hotovo (levné, knihovna `soc_mail`, běží i za běhu v portálu):**
+- header signály A1–A8 + rozšíření (Sender≠From, punycode, header injection,
+  hromadný mailer, cloud `CAT`, DMARC `p=none`) — detailní tabulka A níže,
+- riziko příloh **ze jména** (`attachments.py`): spustitelné/dvojité přípony,
+  SVG, makro-office, archiv.
+
+**Vrstva 2 — levná rozšíření knihovny (pořád static/offline, jen ještě neuděláno):**
+
+| Signál | Z čeho | Přínos | FP riziko |
+|---|---|---|---|
+| **profil hromadné pošty** | `List-Unsubscribe`/`List-Id`/`Precedence: bulk`/`Feedback-ID` | **protijed na falešné poplachy** — pozná newsletter a zmírní signály | — (naopak přesnost zvedá) |
+| From == To | `From` vs `To` | spam „sám sobě" — reálný phishing vzor | nízké |
+| HELO vs PTR nesoulad | origin hop v `Received` | falešný původce | nízké |
+| slabý DKIM | `DKIM-Signature` (`h=` bez `From`/`Subject`, `rsa-sha1`, `x=`) | podpis „projde", klíčové hlavičky nechrání | nízké |
+| fakta | prázdný `Return-Path: <>`, chybějící `Message-ID`, `Date` v budoucnu, origin IP, `CTRY:` | kontext + vstup pro fázi B | zobrazit, neskórovat |
+
+**Vrstva 3 — těžká obsahová analýza (off-the-shelf nástroje, běží v RW zapisovateli, NE v portálu):**
+
+| Nástroj | Co přidá | Cena | Kde běží |
+|---|---|---|---|
+| **olevba** (oletools) | VBA/XLM makra v Office příloze: skok od „je makro-dokument" k „auto-spouštěné makro volá `Shell()`/stahuje z URL" | pip závislost, CPU/dok | **první na řadě**; soc_api/orchestrátor |
+| **ClamAV** | signaturní detekce známého malwaru (Talos DB) | démon `clamd` + DB + `freshclam` (síť, denní aktualizace) | orchestrátor (ne příjmová brána) |
+| **YARA** | pravidlová detekce kampaní/phishingu | engine + **údržba pravidel** (komunitní sada `Yara-Rules/rules` je zastaralá) | orchestrátor, **podmíněně** (jen s čerstvými pravidly) |
+
+*Nepřebíráme* z kolegova air-gap dokumentu: `shred`/secure-wipe (vault záměrně
+retinujeme), air-gap přenos přes USB, ruční adresářová disciplína — máme lepší
+model (rootless kontejnery, RO mount, obsahově adresovaný vault). Sdílíme princip
+(izolovat hrozbu od analytika), ne mechanismus.
+
+**Kde co běží a kdo píše:**
+
+| Co | Kde běží | Píše |
+|---|---|---|
+| header + přílohy podle jména (levné) | soc_api při příjmu → `analysis.json` | RW zapisovatel |
+| olevba / ClamAV / YARA (těžké skenery) | orchestrátor | RW → `analysis.json` |
+| **portál (RO)** | jen **čte** `analysis.json` (fallback: dopočítá levnou část) | nic |
+| PDF render → náhled | portál on-demand | portálová cache (ne vault) |
+
+**Priorita:** (1) olevba do analýzy příloh, (2) profil hromadné pošty (přesnost),
+(3) From==To + HELO/PTR + slabý DKIM, (4) ClamAV v orchestrátoru, (5) YARA jen
+s udržovanými pravidly.
 
 ## A — offline signály
 
