@@ -63,8 +63,13 @@ def _band(points: int) -> str:
     return "info" if points else "ok"
 
 
-def score_headers(a: HeaderAnalysis) -> Score:
-    """Sesbira bodovane signaly z analyzy hlavicek do jednoho skore."""
+def score_headers(a: HeaderAnalysis, extra_findings=()) -> Score:
+    """Sesbira bodovane signaly do jednoho skore.
+
+    `extra_findings` jsou nalezy z jinych zdroju nez hlavicky (napr. prilohy,
+    viz attachments.py) - boduji se stejnou vahou. Az pribude telo/faze B,
+    pridaji se sem stejnou cestou; kontrakt Score se nemeni.
+    """
     contribs: list[Contribution] = []
 
     # Autentizace: boduje se verdikt AUTORITATIVNIHO overovatele (vstupni
@@ -93,7 +98,7 @@ def score_headers(a: HeaderAnalysis) -> Score:
                         if fallback else ""),
                 level=level, points=_LEVEL_POINTS[level]))
 
-    for f in a.findings:
+    for f in list(a.findings) + list(extra_findings):
         contribs.append(Contribution(
             code=f.code, title=f.title, text=f.text, level=f.level,
             points=_LEVEL_POINTS.get(f.level, 1)))

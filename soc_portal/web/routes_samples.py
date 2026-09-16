@@ -60,6 +60,7 @@ def _triage_summary(sha256: str) -> dict:
     """
     sender = subject = ""
     analysis = None
+    att_findings = []
     nested = vault_reader.list_nested_messages(sha256)
     if nested:
         try:
@@ -67,6 +68,7 @@ def _triage_summary(sha256: str) -> dict:
                 vault_reader.extracted_path(sha256, nested[0]))
             sender, subject = parsed.sender, parsed.subject
             analysis = soc_mail.analyze(parsed.headers_text)
+            att_findings = soc_mail.analyze_attachments(parsed.attachments)
         except (soc_mail.MailParseError, vault_reader.VaultError,
                 FileNotFoundError):
             pass
@@ -77,7 +79,8 @@ def _triage_summary(sha256: str) -> dict:
             analysis = soc_mail.analyze(text)
         except (vault_reader.VaultError, FileNotFoundError, OSError):
             pass
-    score = soc_mail.score_headers(analysis) if analysis else None
+    score = (soc_mail.score_headers(analysis, extra_findings=att_findings)
+             if analysis else None)
     return {"sender": sender, "subject": subject, "is_report": bool(nested),
             "points": score.points if score else None,
             "band": score.band if score else None}
@@ -211,7 +214,9 @@ def _parse_nested(sha256: str) -> list[dict]:
             item["msg"] = parsed
             item["body_text"] = soc_mail.defang_text(parsed.body_text)
             item["analysis"] = soc_mail.analyze(parsed.headers_text)
-            item["score"] = soc_mail.score_headers(item["analysis"])
+            item["score"] = soc_mail.score_headers(
+                item["analysis"],
+                extra_findings=soc_mail.analyze_attachments(parsed.attachments))
         except (soc_mail.MailParseError, vault_reader.VaultError,
                 FileNotFoundError) as e:
             event(bp_logger(), logging.WARNING, "nested_msg_parse_failed",
