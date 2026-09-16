@@ -1,0 +1,35 @@
+# Obraz ORCHESTRATORU. Stavi se z korene repozitare:
+#
+#     deploy/container-build-soc-orchestrator.sh
+#
+# Neni to webova sluzba - zadny flask/waitress, zadny EXPOSE. Bezi jako smycka,
+# ktera bere pending vzorky z vaultu a pise analysis.json. Vault se montuje
+# zvenci READ-WRITE (jako soc-api); orchestrator pise atomicky.
+FROM python:3.12-slim
+
+# UID natvrdo (jako soc-api/portal): rootless podman mapuje uzivatele pres
+# --userns=keep-id:uid=1000,gid=1000 - stejne cislo drzi prava na sdilenem vaultu.
+RUN useradd --create-home --uid 1000 soc
+
+WORKDIR /app
+# Balik orchestratoru + sdilena knihovna soc_mail. Analyticke deps (extract-msg
+# tahne i oletools pres RTFDE) patri sem - tady se analyza opravdu spousti.
+COPY soc_orchestrator ./soc_orchestrator
+COPY soc_mail ./soc_mail
+RUN pip install --no-cache-dir "extract-msg>=0.50" "oletools>=0.60"
+
+# Zadny suid/sgid nastroj navic (druha vrstva k no-new-privileges).
+RUN find / -xdev -perm /6000 -type f -exec chmod -s {} + 2>/dev/null || true
+
+COPY deploy/entrypoint-soc-orchestrator.sh /usr/local/bin/entrypoint-soc-orchestrator.sh
+RUN chmod +x /usr/local/bin/entrypoint-soc-orchestrator.sh
+
+USER soc
+
+# Neni HTTP endpoint - zdravi = cerstvost heartbeat souboru, ktery smycka
+# tuka kazdy tick. Zaseknuty demon = zastaraly heartbeat -> systemd restart.
+HEALTHCHECK --interval=60s --timeout=5s --start-period=30s --retries=3 \
+    CMD python -c "import os,sys,time; p=os.environ.get('SOC_ORCH_HEARTBEAT','/tmp/soc-orchestrator.heartbeat'); sys.exit(0 if os.path.exists(p) and time.time()-os.path.getmtime(p)<180 else 1)"
+
+ENTRYPOINT ["/usr/local/bin/entrypoint-soc-orchestrator.sh"]
+CMD []
