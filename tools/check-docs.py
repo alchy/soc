@@ -41,7 +41,11 @@ zkontroluj("pocty radku", [f"{j}: docs {m.group(1)} vs {n}" for j, n in radky.it
 
 sber = subprocess.run([sys.executable, "-m", "pytest", "-q", "--collect-only"],
                       capture_output=True, text=True, cwd=KOREN).stdout
-behu = len([l for l in sber.splitlines() if "::" in l])
+# kod.md dokumentuje soc-api; testy ostatnich komponent (tests/portal/,
+# tests/mail/, ...) maji vlastni docs a pocet si nepripinaji - pocitame jen
+# behy soc-api, tj. ploche soubory tests/test_*.py.
+behu = len([l for l in sber.splitlines()
+            if "::" in l and l.startswith("tests/test_")])
 m = re.search(r"\((\d+) běhů", docs["kod.md"])
 zkontroluj("pocet testu", [] if m and int(m.group(1)) == behu
            else [f"docs {m.group(1) if m else '?'} vs {behu}"])

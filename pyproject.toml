@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Prijem malware vzorku pro analyzu - REST API nad access-managerem"
 requires-python = ">=3.12"
 license = { text = "Apache-2.0" }
-dependencies = ["flask>=3.0", "waitress>=3.0", "pyzipper>=0.3"]
+dependencies = ["flask>=3.0", "waitress>=3.0", "pyzipper>=0.3", "extract-msg>=0.50"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
@@ -19,12 +19,14 @@ build-backend = "setuptools.build_meta"
 # Dockerfile kopiruje jen pyproject.toml a soc_api, kontejner se postavi
 # i tak. Rozbita je proto jen ta nativni a vyvojarska cesta z README.
 [tool.setuptools]
-# Monorepo: dve nasazovatelne komponenty v jednom repozitari.
+# Monorepo: dve nasazovatelne komponenty + sdilene knihovny.
 #   soc_api    - prijem vzorku (RW vault),  bezi na :8095, routa /api
 #   soc_portal - portal SOC tymu (RO vault), bezi na :8096, routa /portal
+#   soc_mail   - KNIHOVNA (cteni .msg, defang URL); zadny proces, backendy ji
+#                importuji jako modul (dnes portal, zitra orchestrator analyzy)
 # Bezi jako oddelene procesy/kontejnery; sdili jen obsah vaultu (soc_api pise,
-# soc_portal cte). flask+waitress jsou spolecne zavislosti, portal zadnou navic.
-packages = ["soc_api", "soc_portal", "soc_portal.auth", "soc_portal.web"]
+# soc_portal cte). extract-msg je zavislost soc_mail.
+packages = ["soc_api", "soc_mail", "soc_portal", "soc_portal.auth", "soc_portal.web"]
 
 # Sablony a staticky portalu nejsou Python - musi se do balicku pribalit rucne.
 [tool.setuptools.package-data]

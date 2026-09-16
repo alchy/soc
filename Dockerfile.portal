@@ -13,10 +13,11 @@ FROM python:3.12-slim
 RUN useradd --create-home --uid 1000 soc
 
 WORKDIR /app
-# Zamerne kopirujeme JEN portalovy balik (ne soc_api) - lehci obraz, mensi
-# plocha. Sablony a staticka lezi uvnitr soc_portal/web/, jdou s adresarem.
+# Zamerne kopirujeme JEN portalovy balik + knihovnu soc_mail (ne soc_api) -
+# lehci obraz, mensi plocha. Sablony a staticka lezi uvnitr soc_portal/web/.
 COPY soc_portal ./soc_portal
-RUN pip install --no-cache-dir "flask>=3.0" "waitress>=3.0"
+COPY soc_mail ./soc_mail
+RUN pip install --no-cache-dir "flask>=3.0" "waitress>=3.0" "extract-msg>=0.50"
 
 # Obrazu setrit netreba: kazdy suid/sgid nastroj je zbran navic pro toho, kdo by
 # uvnitr dostal shell. `no-new-privileges` je uz zvednout nenecha; tohle je druha vrstva.

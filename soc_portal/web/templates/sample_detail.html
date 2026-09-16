@@ -1,5 +1,70 @@
 {% extends "base.html" %}
 {% block title %}Vzorek {{ sha256[:12] }} - SOC portal{% endblock %}
+
+{# ── jednotny vizualni jazyk detailu ─────────────────────────────────────────
+   semafor: ok (zelena) / info+warn (zluta) / high (cervena)
+   - .scorechip  velky stitek se skore v hlavicce panelu
+   - .authline   rada chipu SPF/DKIM/DMARC za kazdeho overovatele
+   - .notice     maly roundbox pro jeden signal/nalez (barva = sila)          #}
+
+{% macro auth_badge(label, v) -%}
+  {%- set cls = 'ok' if v == 'pass'
+      else ('bad' if v in ('fail', 'softfail', 'permerror')
+      else ('warn' if v else 'pending')) -%}
+  <span class="badge {{ cls }}">{{ label }}&nbsp;{{ v or '?' }}</span>
+{%- endmacro %}
+
+{% macro score_chip(score) -%}
+  {%- set cls = {'ok': 'ok', 'info': 'warn', 'warn': 'warn', 'high': 'bad'}[score.band] -%}
+  <span class="scorechip {{ cls }}" title="soucet bodu za signaly z hlavicek; vyssi = podezrelejsi">
+    skore {{ score.points }}</span>
+{%- endmacro %}
+
+{% macro header_analysis(a, score) -%}
+  {# jeden souvisly blok signalnich radku - nefragmentovany jinymi daty;
+     detail overovatelu a fakta jsou sbalene pod nim #}
+  <h3 class="boxlabel">Signaly z hlavicek (offline)</h3>
+  {% for c in score.contributions %}
+  <div class="sigrow sev-{{ c.level }}">
+    <span class="sev">{{ {'info': 'INFO', 'low': 'NIZKA', 'medium': 'STREDNI',
+                          'high': 'VYSOKA', 'critical': 'KRITICKA'}[c.level] }}</span>
+    <span class="what">{{ c.title }}</span>
+    <span class="desc">{{ c.text }}</span>
+    <span class="pts">+{{ c.points }}</span>
+  </div>
+  {% else %}
+  <div class="sigrow sev-ok">
+    <span class="sev">OK</span>
+    <span class="desc">Hlavicky bez podezrelych signalu.</span>
+  </div>
+  {% endfor %}
+
+  <details class="fold">
+    <summary>Detail autentizace ({{ a.auth|length }} overovatel{{ 'e' if 1 < a.auth|length < 5 else ('' if a.auth|length == 1 else 'u') }}) a fakta</summary>
+    {% if a.auth|length > 1 %}
+    <p class="muted authnote">Kazda brana po ceste razitkuje vlastni verdikt, proto je
+      SPF/DKIM/DMARC videt vickrat. Skore vyse bere nejhorsi vysledek kazdeho mechanismu.</p>
+    {% endif %}
+    {% for r in a.auth %}
+    <div class="authline">
+      {{ auth_badge('SPF', r.spf) }}{{ auth_badge('DKIM', r.dkim) }}{{ auth_badge('DMARC', r.dmarc) }}
+      <span class="muted mono authsrv">
+        {%- if r.server %}overil: {{ r.server }}{% else %}koncova brana (jmeno neuvedla){% endif %}
+        {%- if r.original %} · puvodni verdikt (Authentication-Results-Original){% endif %}</span>
+    </div>
+    {% else %}
+    <p class="muted">Zadna Authentication-Results hlavicka - zprava nesla pres overujici branu.</p>
+    {% endfor %}
+    <dl class="kv facts">
+      <dt>From</dt><dd class="mono">{{ a.from_display }} &lt;{{ a.from_addr }}&gt;</dd>
+      {% if a.reply_to %}<dt>Reply-To</dt><dd class="mono">{{ a.reply_to }}</dd>{% endif %}
+      {% if a.return_path %}<dt>Return-Path</dt><dd class="mono">{{ a.return_path }}</dd>{% endif %}
+      {% if a.message_id %}<dt>Message-ID</dt><dd class="mono">{{ a.message_id }}</dd>{% endif %}
+      {% if a.mailer %}<dt>X-Mailer</dt><dd class="mono">{{ a.mailer }}</dd>{% endif %}
+    </dl>
+  </details>
+{%- endmacro %}
+
 {% block body %}
 <main>
   <p class="back"><a href="{{ url_for('samples.dashboard') }}">← zpet na dashboard</a></p>
@@ -27,19 +92,66 @@
     </div>
   </div>
 
+  {% for n in nested %}
+  <div class="panel">
+    <h2>Reportovana zprava{% if nested|length > 1 %} {{ loop.index }}/{{ nested|length }}{% endif %}
+        {% if n.score %}{{ score_chip(n.score) }}{% endif %}</h2>
+    {% if n.msg %}
+    <dl class="kv">
+      <dt>Odesilatel</dt><dd>{{ n.msg.sender or '-' }}</dd>
+      <dt>Predmet</dt><dd>{{ n.msg.subject or '-' }}</dd>
+      <dt>Datum</dt><dd class="mono">{{ n.msg.date or '-' }}</dd>
+      {% if n.msg.attachments %}
+      <dt>Prilohy</dt><dd>{% for a in n.msg.attachments %}<span class="mono">{{ a.name }}</span> ({{ a.size | human_size }}){% if not loop.last %}, {% endif %}{% endfor %}</dd>
+      {% endif %}
+      <dt>Zdroj</dt><dd class="mono muted">{{ n.path }}</dd>
+    </dl>
+    {% if n.analysis %}{{ header_analysis(n.analysis, n.score) }}{% endif %}
+
+    {% if n.msg.body_html or n.body_text %}
+    <h3 class="boxlabel">Obsah zpravy</h3>
+    <div class="notice warn">⚠ Nepratelsky obsah - odkazy defangovane (hxxps://…[.]…),
+      HTML izolovane v sandboxu. Original ke stazeni v Rozbalenych souborech.</div>
+    {% endif %}
+    {% if n.msg.body_html %}
+    <iframe class="body" sandbox
+            referrerpolicy="no-referrer"
+            src="{{ url_for('samples.nested_body', sha256=sha256, idx=n.idx) }}"
+            title="HTML telo reportovane zpravy (izolovane)"></iframe>
+    {% endif %}
+    {% if n.body_text %}
+    <details class="fold">
+      <summary>Plaintext telo (defangovane)</summary>
+      <pre class="text">{{ n.body_text }}</pre>
+    </details>
+    {% endif %}
+    {% if not n.msg.body_html and not n.body_text %}
+    <p class="muted">Zprava nema citelne telo.</p>
+    {% endif %}
+    {% else %}
+    <div class="notice bad">Prilohu <span class="mono">{{ n.path }}</span> se nepodarilo
+      precist jako zpravu - je ke stazeni v Rozbalenych souborech.</div>
+    {% endif %}
+  </div>
+  {% endfor %}
+
   {% if headers_text %}
   <div class="panel">
-    <h2>Hlavicky</h2>
-    <pre class="text">{{ headers_text }}</pre>
+    <h2>Hlavicky{% if wrapper_score %} {{ score_chip(wrapper_score) }}{% endif %}</h2>
+    {% if wrapper_analysis %}{{ header_analysis(wrapper_analysis, wrapper_score) }}{% endif %}
+    <details class="fold">
+      <summary>Plny text hlavicek</summary>
+      <pre class="text">{{ headers_text }}</pre>
+    </details>
   </div>
   {% endif %}
 
   {% if has_body %}
   <div class="panel">
-    <h2>HTML telo</h2>
-    <div class="warnbar">⚠ Telo pochazi z nepratelskeho vzorku. Zobrazuje se izolovane
-      (sandbox + CSP): skripty a nacitani obrazku jsou zakazany.</div>
-    <iframe class="body" sandbox
+    <h2>{% if nested %}Telo reportu (obal){% else %}HTML telo{% endif %}</h2>
+    <div class="notice warn">⚠ Nepratelsky obsah - zobrazuje se izolovane (sandbox + CSP),
+      odkazy defangovane.</div>
+    <iframe class="body{% if nested %} short{% endif %}" sandbox
             referrerpolicy="no-referrer"
             src="{{ url_for('samples.sample_body', sha256=sha256) }}"
             title="HTML telo e-mailu (izolovane)"></iframe>

@@ -17,33 +17,35 @@
 
 {% block body %}
 <main>
-  <p class="muted">Poslednich {{ rows|length }} vzorku (od nejnovejsiho).</p>
-  <div class="panel" style="padding:0; overflow:auto;">
-    <table>
-      <thead>
-        <tr>
-          <th>Prijato</th><th>Odesilatel</th><th>Predmet</th>
-          <th>Soubor</th><th>Velikost</th><th>Extrakce</th><th>Analyza</th><th>sha256</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for r in rows %}
-        <tr>
-          <td class="mono">{{ r.received_at }}</td>
-          <td class="trunc" title="{{ r.sender }}">{{ r.sender or '-' }}</td>
-          <td class="trunc" title="{{ r.subject }}">{{ r.subject or '-' }}</td>
-          <td class="trunc" title="{{ r.filename }}">{{ r.filename or '-' }}</td>
-          <td class="mono">{{ r.size | human_size }}</td>
-          <td>{{ extraction_badge(r.extraction_status) }}
-              {% if r.encrypted %}<span class="badge warn" title="sifrovany archiv">enc</span>{% endif %}</td>
-          <td>{{ analysis_badge(r.analysis_state) }}</td>
-          <td class="sha"><a href="{{ url_for('samples.sample_detail', sha256=r.sha256) }}">{{ r.sha256[:12] }}…</a></td>
-        </tr>
-        {% else %}
-        <tr><td colspan="8" class="muted" style="padding:20px; text-align:center;">Zadne vzorky.</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
+  <p class="muted">Poslednich {{ rows|length }} vzorku (od nejnovejsiho). Klik na radek rozbali podrobnosti.</p>
+  <div class="panel samples" style="padding:0;">
+    <div class="head">
+      <span></span><span>Prijato</span><span>Odesilatel</span><span>Predmet</span>
+    </div>
+    {% for r in rows %}
+    <details class="row">
+      <summary>
+        <span class="chev" aria-hidden="true"></span>
+        <span class="mono">{{ r.received_at }}</span>
+        <span class="trunc" title="{{ r.sender }}">{{ r.sender or '-' }}</span>
+        <span class="trunc" title="{{ r.subject }}">{{ r.subject or '-' }}</span>
+      </summary>
+      <div class="more">
+        <dl class="kv">
+          <dt>Soubor</dt><dd>{{ r.filename or '-' }}</dd>
+          <dt>Velikost</dt><dd class="mono">{{ r.size | human_size }}</dd>
+          <dt>Extrakce</dt>
+          <dd>{{ extraction_badge(r.extraction_status) }}
+              {% if r.encrypted %}<span class="badge warn" title="sifrovany archiv">enc</span>{% endif %}</dd>
+          <dt>Analyza</dt><dd>{{ analysis_badge(r.analysis_state) }}</dd>
+          <dt>sha256</dt><dd class="mono sha-full">{{ r.sha256 }}</dd>
+        </dl>
+        <a class="btn detail-link" href="{{ url_for('samples.sample_detail', sha256=r.sha256) }}">Otevrit detail vzorku</a>
+      </div>
+    </details>
+    {% else %}
+    <p class="muted" style="padding:20px; text-align:center; margin:0;">Zadne vzorky.</p>
+    {% endfor %}
   </div>
 </main>
 {% endblock %}

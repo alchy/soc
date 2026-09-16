@@ -17,6 +17,12 @@ Kontrakt mezi nimi = formát vaultu (`manifest.json`, `extracted/`). soc-api ho
 vlastní a zapisuje **atomicky** (temp + rename); soc-portal ho čte a na atomicitu
 spoléhá. Tento invariant musí ctít i budoucí orchestrátor analýzy.
 
+Vedle komponent existují **sdílené knihovny** — extrakční/analytická funkcionalita
+se píše jako knihovna bez služebních závislostí a backendy ji volají jako modul
+(segregace kódu, žádná duplikace). První je [`soc_mail/`](../soc_mail) — čtení
+Outlook `.msg` (`extract-msg`) a defang URL; dnes ji používá portál, zítra
+orchestrátor. Testy: `tests/mail/`.
+
 ---
 
 ## soc-api — příjem vzorků

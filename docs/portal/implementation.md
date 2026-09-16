@@ -7,6 +7,10 @@ zobrazuje, netriaguje data ve vaultu.
 ## 1. Vrstvy (vertikální řez — jádro nezná HTTP)
 
 ```
+soc_mail/             SDÍLENÁ KNIHOVNA (vlastní balíček, víc komponent — ne monolit):
+│                     msg.py čtení .msg · defang.py zneškodnění obsahu ·
+│                     headers.py offline analýza hlaviček (viz header-analysis.md);
+│                     žádný Flask/vault/HTTP, viz ADR-9
 soc_portal/
 ├─ config.py          všechny volby z prostředí; fail-fast validace na startu
 ├─ logging_setup.py   strukturované JSON logy (stejný tvar jako soc-api / AM)
@@ -21,7 +25,7 @@ soc_portal/
     ├─ app.py             kompoziční kořen: sestaví app, vloží provider
     ├─ deps.py            login_required guard, klient IP
     ├─ routes_auth.py     /login, /logout
-    ├─ routes_samples.py  /, /sample/<sha>, /sample/<sha>/body, .../file/<p>
+    ├─ routes_samples.py  /, /sample/<sha>, .../body, .../nested/<i>/body, .../file/<p>
     └─ templates/, static/
 ```
 
@@ -141,10 +145,43 @@ tajemství, nebo je klíč z jiného realmu, portál **nenastartuje** — místo
   **malé `z`** (sdílený label). soc-api dnes používá velké `Z` (privátní) — nutno
   změnit na `z`, jinak portál vault nepřečte i s `:ro`. Viz `deploy/`.
 
+- **ADR-8: dashboard = rozbalovací řádky přes nativní `<details>`, žádný JS.**
+  Řádek tabulky s 8 sloupci byl přeplněný; analytik při triáži potřebuje na první
+  pohled jen *Přijato / Odesílatel / Předmět*. Souhrnný řádek nese jen tyhle tři
+  údaje, zbytek (soubor, velikost, extrakce, analýza, sha256, odkaz na detail) se
+  rozbalí kliknutím na řádek. Zvažován kus JavaScriptu (toggle třídy) vs. nativní
+  `<details>/<summary>` — vyhrál vestavěný prvek prohlížeče: nula JS, klávesnice
+  i přístupnost zdarma, nemá co se rozbít. Tvar šablony připíná
+  `tests/portal/test_web_dashboard.py`.
+
+- **ADR-9: vnořená zpráva z reportu — parsuje se knihovnou, za běhu, defangovaně.**
+  Vzorky často nejsou samotný spam, ale **report z Outlook tlačítka** (PhishReporter):
+  uložené `body.html` je jen obal („Computer IP addresses…") a skutečný spam leží
+  jako příloha `extracted/attachments/*.msg.norun`. Detail proto vnořené `.msg`
+  rozparsuje a ukáže reportovanou zprávu v boxech (hlavička, plaintext, HTML).
+  Tři rozhodnutí:
+  1. *Kde kód žije:* extrakční/analytická funkcionalita = **samostatná knihovna
+     `soc_mail/`** (nad `extract-msg`), backendy ji volají jako modul. Portál ji
+     používá teď, orchestrátor analýzy ji zdědí — žádná duplikace, žádný import
+     z webové komponenty.
+  2. *Kdy se parsuje:* **za běhu při zobrazení**, bez zápisu do vaultu — portál
+     zůstává read-only (mount `:ro` to stejně vynucuje). `.msg` má stovky kB,
+     parsování stojí milisekundy; cache je YAGNI. Až orchestrátor výsledky
+     předpočítá do vaultu, portál jen přepne zdroj.
+  3. *Jak se zobrazuje:* **defangovaně** (`soc_mail.defang`): `https://evil.com`
+     → `hxxps://evil[.]com`, `<a>` ztrácí `href` (sandbox iframe totiž neblokuje
+     navigaci vlastního rámu — klik by odešel na server útočníka), `<script>`
+     a komentáře pryč, URL v atributech i textu zneškodněné. HTML jde i tak
+     výhradně do sandbox iframe s CSP (ADR-6) — defang je vrstva navíc a chrání
+     hlavně copy-paste. Original zůstává ke stažení (nikdy inline).
+  Testy: `tests/mail/test_msg.py` (knihovna), `tests/portal/test_web_sample_detail.py`
+  (routy + defang v odpovědích).
+
 ## 5. Provoz
 
 - Spuštění: `python -m soc_portal` (waitress na `BIND_HOST:BIND_PORT`, TLS terminuje nginx).
 - Port: **127.0.0.1:8096** (soc-api = 8095).
 - Logy: JSON řádky na stdout (provoz) / stderr (potíže) — `podman logs`.
-- Testy: `pytest` — baseline proti reálným vzorkům + auth jádro (24 testů).
+- Testy: `pytest` — baseline proti reálným vzorkům + auth jádro + smoke webové
+  vrstvy (mock login → dashboard).
 - nginx a kontejner: viz `deploy/nginx-portal.conf.example`, `deploy/container-run-portal.sh`.

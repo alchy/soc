@@ -1,0 +1,16 @@
+"""soc_mail - KNIHOVNA pro cteni e-mailovych formatu, bez sluzebnich zavislosti.
+
+Extrakcni/analyticke komponenty stavime jako knihovny a backendy (portal dnes,
+orchestrator analyzy zitra) je volaji jako moduly - segregace kodu: zadny
+Flask, zadna znalost vaultu ani HTTP. Vstupem je soubor/bajty, vystupem
+neutralni datovy model.
+"""
+from .defang import defang_html, defang_text
+from .headers import AuthResult, Finding, HeaderAnalysis, analyze
+from .msg import MailAttachment, MailParseError, ParsedMessage, parse_msg
+from .scoring import Contribution, Score, score_headers
+
+__all__ = ["MailAttachment", "MailParseError", "ParsedMessage", "parse_msg",
+           "defang_html", "defang_text",
+           "AuthResult", "Finding", "HeaderAnalysis", "analyze",
+           "Contribution", "Score", "score_headers"]

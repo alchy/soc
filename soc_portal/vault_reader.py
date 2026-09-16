@@ -106,6 +106,18 @@ def list_files(sha256: str) -> list[dict]:
     return out
 
 
+def list_nested_messages(sha256: str) -> list[str]:
+    """Relativni cesty priloh, ktere jsou vnorene Outlook zpravy.
+
+    Report z tlacitka "nahlasit spam" (PhishReporter) nese SKUTECNY spam jako
+    prilohu `.msg`; ulozene body.html je jen obal reportu. Extrakce prilohy
+    prejmenovava na `.norun`, proto obe pripony.
+    """
+    return [f["path"] for f in list_files(sha256)
+            if f["path"].startswith("attachments/")
+            and f["path"].lower().endswith((".msg", ".msg.norun"))]
+
+
 def extracted_path(sha256: str, relpath: str) -> Path:
     """Bezpecna absolutni cesta k jednomu rozbalenemu souboru.
 
