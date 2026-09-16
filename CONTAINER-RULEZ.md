@@ -44,8 +44,14 @@ Každé pravidlo má ID (`IMG-1`, `PXY-3`, …). Report konformity se na ně odk
 - **BLD-2** — Build MUSÍ použít `podman build --format docker`.
   _Ověření:_ řetězec ve build skriptu.
   _Proč:_ v nativním OCI formátu podman zahodí `HEALTHCHECK` a `podman ps` neukáže `(healthy)`.
-- **BLD-3** — Build MUSÍ jít z build skriptu `deploy/container-build-<s>.sh`, ne ad hoc.
-  _Ověření:_ existence skriptu.
+- **BLD-3** — Build MUSÍ jít z build skriptu v `deploy/`, ne ad hoc. Jména **všech**
+  deploy/build skriptů — build, run wrapper i instalační skript — MUSÍ obsahovat
+  `<s>`: `container-build-<s>.sh`, `container-run-<s>.sh`, `install-container-<s>.sh`
+  (a `entrypoint-<s>.sh`), **i v repu s jediným obrazem**. Generický název je
+  jednoznačný jen uvnitř jednoho repa a rozbije se, jakmile přibude druhý obraz nebo
+  když se skripty čtou napříč službami na hostiteli. _Ověření:_ `ls deploy/*-<s>.*`;
+  žádný generický `container-build.sh` / `container-run.sh` / `install-container.sh`
+  / `entrypoint.sh`.
 
 ## C. Běh kontejneru (`RUN`) — vše v run wrapperu
 
@@ -59,6 +65,13 @@ Každé pravidlo má ID (`IMG-1`, `PXY-3`, …). Report konformity se na ně odk
   pádu stroje). _Ověření:_ řetězec ve wrapperu.
 - **RUN-4** — Wrapper MUSÍ fail-fast na chybějící vstupy (mounty, tajemství) —
   nespouštět rozbitý kontejner. _Ověření:_ `[ -d ... ] || exit 1` apod.
+  Mezi povinné vstupy patří i **konfigurace, bez které by entrypoint nastartoval
+  na vývojových / dummy defaultech**. Kontroly MUSÍ stát **před** `podman rm -f`
+  (RUN-3), aby neúspěšný pokus neshodil běžící kontejner.
+  _Proč:_ dummy defaulty mají typicky vypnuté právě ty ochrany, které v provozu
+  potřebujete (prázdné `trusted_proxies`, Secure cookie off). Kontejner naběhne,
+  healthcheck svítí zeleně a origin ACL přitom nerozlišuje nikoho — tiché
+  selhání, které vypadá jako úspěch. Nenastartovat je lepší.
 - **RUN-5** — Publikace portu MUSÍ být jen na `127.0.0.1` (`--publish 127.0.0.1:<port>:<port>`).
   _Ověření:_ `podman port <s>` / `ss -ltnp` ukazuje jen `127.0.0.1`.
 - **RUN-6** — MUSÍ být `--userns keep-id:uid=1000,gid=1000`, `--init`, `--rm`,
@@ -105,6 +118,20 @@ Kontrakt mezi hostitelským nginx (TLS) a kontejnerem (holé HTTP na 127.0.0.1).
   `X-Real-IP $remote_addr` / `X-Forwarded-For $remote_addr` (ne `$http_x_...`); v app
   configu odpovídající `trusted_proxies` / ProxyFix `x_for=1`.
   _Proč:_ kdyby si hlavičku směl nastavit klient, obešel by origin ACL.
+
+  Dvě upřesnění, na kterých se to v praxi láme:
+
+  1. `$proxy_add_x_forwarded_for` je **zakázaný**. Připojuje `$remote_addr` k tomu,
+     co poslal klient, takže hlavička nese obě části a záleží na tom, z které
+     strany si ji aplikace přebírá — a to je vlastnost aplikace, ne vhostu.
+     (Zdejší služby to čtou z obou konců: access-manager bere `hops`-tý prvek
+     **zprava**, soc-api první **zleva**. S jedinou hodnotou je to jedno, a přesně
+     proto MUSÍ být hodnota právě jedna.)
+  2. Posílá-li vhost **obě** hlavičky, MUSÍ být `$remote_addr` v **obou**.
+     Aplikace typicky čte jednu a na druhou má fallback; nepřepsaná hlavička je
+     pak spoofovatelná dírou, kterou nikdo nečekal, protože ta "hlavní" je
+     v pořádku. _Ověření:_ grep vhostu — žádný `proxy_set_header X-Real-IP` ani
+     `X-Forwarded-For` s jinou hodnotou než `$remote_addr`.
 - **PXY-4** — Aplikace na sub-cestě (`/<s>/…`) MUSÍ dostat `X-Forwarded-Prefix /<s>`
   a číst ho (ProxyFix `x_prefix`); před location bez lomítka MUSÍ být `= /<s>` →
   `return 308 /<s>/`. _Ověření:_ `proxy_set_header X-Forwarded-Prefix`; 308 redirect;
@@ -131,8 +158,9 @@ Kontrakt mezi hostitelským nginx (TLS) a kontejnerem (holé HTTP na 127.0.0.1).
   --log-opt path=$HOME/logs/<s>.log --log-opt max-size=<N>m` (`N` ≥ 10), soubor v
   `HOME` uživatele služby (přežije `podman rm`). _Ověření:_
   `podman inspect <s> --format '{{.HostConfig.LogConfig}}'`; soubor existuje a roste.
-  Jednotně u všech služeb; přechod na `journald` je celohostitelské rozhodnutí, ne
-  per-služba.
+  Jméno logu MUSÍ obsahovat `<s>` (ne generické `service.log`), **sdílejí-li služby
+  jeden adresář logů** — jinak nejde poznat, čí log je čí. Jednotně u všech služeb;
+  přechod na `journald` je celohostitelské rozhodnutí, ne per-služba.
 - **LOG-2** — Aplikační log psaný mimo stdout (do mountu) MUSÍ mít vlastní rotaci
   (logrotate nebo v aplikaci). _Ověření:_ existence logrotate pravidla / rotace v kódu;
   soubor neroste bez stropu.
@@ -141,6 +169,10 @@ Kontrakt mezi hostitelským nginx (TLS) a kontejnerem (holé HTTP na 127.0.0.1).
 
 - **SVC-1** — Unit soubor MUSÍ mít mód `0644` a NESMÍ být spustitelný.
   _Ověření:_ `stat -c %a /etc/systemd/system/<s>-container.service` = `644`.
+  Instalační skript MUSÍ mód nastavit **výslovně** (`install -m 0644`, nebo
+  `chmod 0644` po `sed … > …`), ne se spolehnout na umask.
+  _Proč:_ unit psaný přesměrováním zdědí umask té relace, ve které se instalovalo;
+  jednou se to trefí a podruhé ne, a rozdíl nikdo nevidí.
 - **SVC-2** — `[Unit]` MUSÍ mít `Wants`+`After network-online.target`,
   `Requires`+`After user@<uid>.service` (linger), a `Wants`+`After` (ne `Requires`)
   závislých služeb. _Ověření:_ řádky v unitu.
@@ -180,10 +212,17 @@ Kontrakt mezi hostitelským nginx (TLS) a kontejnerem (holé HTTP na 127.0.0.1).
 
 ## I. Příprava hostitele / deploy (`HST`)
 
-- **HST-1** — Každá služba MUSÍ mít idempotentní `deploy/install-container.sh`
+- **HST-1** — Každá služba MUSÍ mít idempotentní instalační skript v `deploy/`
   (spouštěný root), který: založí účet (nepřihlašovací — `nologin`, MĚLA BY; jinak
   aspoň `passwd -l`; nikdy sudoers), založí adresáře, deleguje subuid/subgid, zapne
-  linger a nainstaluje wrapper + unit. _Ověření:_ existence a běh skriptu.
+  linger a nainstaluje wrapper + unit. Jméno MUSÍ obsahovat `<s>`
+  (`install-container-<s>.sh`) — **vždy** (viz BLD-3), i v jedno-službovém repu.
+  _Ověření:_ existence a běh skriptu; `ls deploy/install-container-*.sh`, žádný
+  generický `install-container.sh`.
+  _Proč:_ instalační skript zakládá ÚČET, deleguje subuid a píše do
+  `/etc/systemd/system` — spouští se jako root a je nejdražší omyl v celém repu.
+  Generické `sudo deploy/install-container.sh` nedává najevo, kterou službu
+  instaluje, a pozná se to až podle toho, co se založilo.
 - **HST-2** — Účet služby MUSÍ mít **nepřekrývající se** blok subuid/subgid oproti
   ostatním účtům. _Ověření:_ `/etc/subuid`, `/etc/subgid` — bez překryvu rozsahů.
 - **HST-3** — Linger MUSÍ být zapnutý (`loginctl enable-linger <user>`). _Ověření:_
@@ -200,6 +239,14 @@ Kontrakt mezi hostitelským nginx (TLS) a kontejnerem (holé HTTP na 127.0.0.1).
   Mount jednoho kontejneru MUSÍ mít **privátní** `:Z` (velké). _Ověření:_ `--volume`
   options; při sdílení nesmí být `:Z`. _Proč:_ `:Z` přelabeluje na kategorii jednoho
   kontejneru → druhý dostane „permission denied" i s `:ro`.
+- **SEL-2** — Volba `z`/`Z` je vlastnost **mountu, ne služby**: všechny wrappery,
+  které tentýž hostitelský adresář montují, MUSÍ mít stejné písmeno.
+  _Ověření:_ `grep -l '<cesta>' /usr/local/bin/*-container` a porovnat options;
+  `ls -Zd <cesta>` — sdílený adresář nesmí nést kategorii (`:c123,c456`).
+  _Proč:_ label se přepisuje při **každém** startu, takže rozhoduje ten kontejner,
+  který startoval naposled. Nesoulad se tedy neprojeví, dokud se pořadí startů
+  nezmění — a pak přestane číst ten druhý. Pod `Permissive` SELinuxem to navíc
+  mlčí úplně a vybuchne to až při přepnutí na `Enforcing`.
 
 ---
 
