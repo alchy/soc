@@ -90,11 +90,6 @@ Autentizace se boduje **jen z autoritativního ověřovatele** = `Authentication
 neboduje** (artefakt hybridu — jinak bychom trestali legitimní poštu). Váhy se doladí,
 až budou triažované vzorky.
 
-**Poučení beranek@ans.cz (BEC/fakturační podvod):** útočník korektně autentizoval
-VLASTNÍ throwaway doménu (SPF/DKIM/DMARC pass) → autentizace 0 = zelená. Statické
-netextové signály (Sender≠From, PHPMailer, p=none) zvednou na 5/žlutá. Poctivý strop
-statiky je **žlutá, ne červená** — jádro podvodu je text a plná jistota žádá fázi B.
-
 Pokryté statické signály: A1–A8 (viz `docs/portal/header-analysis.md`) + Sender≠From,
 punycode/IDN, header injection (duplicitní From/Subject/Date), hromadný mailer,
 cloud `CAT:`, DMARC `p=none`, riziko příloh podle jména (exec/dvojitá přípona/SVG/
